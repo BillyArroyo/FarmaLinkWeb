@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String \"tsconfig|env\")",
+      "Bash(timeout 10 pnpm dev)",
+      "Bash(npm --version)",
+      "Bash(npx vite *)",
+      "Bash(cd \"/a/PropuestaFarmacia\" && cat package.json | grep -E '\"zustand|supabase\"')",
+      "Read(//a/a/PropuestaFarmacia/**)",
+      "Bash(npx pnpm *)"
+    ]
+  }
+}
