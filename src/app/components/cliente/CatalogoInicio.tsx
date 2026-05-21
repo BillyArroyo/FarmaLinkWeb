@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Search, Bell, ShoppingCart, Star, Zap, Heart, Brain, Baby, Pill, FlaskConical, ChevronRight } from 'lucide-react';
-import { FL, PRODUCTOS } from '../../data/farmalink';
+import { Search, Bell, ShoppingCart, Star, Zap, Heart, Brain, Baby, Pill, FlaskConical, Loader2 } from 'lucide-react';
+import { FL } from '../../data/farmalink';
+import { useProductos, imgUrl, ProductoSupabase } from '../../../modules/catalogo/hooks/useProductos';
 
 const CATEGORIAS = [
   { nombre: 'Antibióticos', icon: Pill, color: '#4AABDB', bg: '#EBF7FD' },
@@ -11,14 +12,36 @@ const CATEGORIAS = [
   { nombre: 'Neurología', icon: Brain, color: '#A78BFA', bg: '#F5F3FF' },
 ];
 
-const LABS = ['Todos', 'Genfar', 'MK', 'Bayer', 'Roemmers', 'Pfizer', 'Farmindustria'];
+function ProductImg({ producto }: { producto: ProductoSupabase }) {
+  const [err, setErr] = useState(false);
+  const url = imgUrl(producto.id);
+  if (!err) {
+    return (
+      <img
+        src={url} alt={producto.nombre}
+        onError={() => setErr(true)}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+      />
+    );
+  }
+  return <FlaskConical size={28} color={FL.primary} />;
+}
 
-const PROMOS = PRODUCTOS.filter(p => p.promo);
-
-interface Props { onCategoria: (cat: string) => void; onProducto: (id: number) => void; }
+interface Props { onCategoria: (cat: string) => void; onProducto: (id: string) => void; }
 
 export function CatalogoInicio({ onCategoria, onProducto }: Props) {
+  const { productos, loading } = useProductos();
   const [labActivo, setLabActivo] = useState('Todos');
+  const [busqueda, setBusqueda] = useState('');
+
+  const labs = ['Todos', ...Array.from(new Set(productos.map(p => p.laboratorio))).sort()];
+  const promos = productos.filter(p => p.oferta);
+
+  const filtrados = productos.filter(p => {
+    const matchLab = labActivo === 'Todos' || p.laboratorio === labActivo;
+    const matchBusq = !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.laboratorio.toLowerCase().includes(busqueda.toLowerCase());
+    return matchLab && matchBusq;
+  });
 
   return (
     <div style={{ backgroundColor: FL.bg, fontFamily: "'Plus Jakarta Sans', sans-serif", color: FL.text }} className="min-h-full overflow-y-auto pb-6">
@@ -26,7 +49,7 @@ export function CatalogoInicio({ onCategoria, onProducto }: Props) {
       <div style={{ background: FL.gradient, borderRadius: '0 0 24px 24px' }} className="px-5 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px' }}>Buenos días 👋</p>
+            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px' }}>Buenos días</p>
             <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>Botica San Martín</p>
           </div>
           <div className="flex gap-3">
@@ -41,20 +64,31 @@ export function CatalogoInicio({ onCategoria, onProducto }: Props) {
         {/* Search */}
         <div style={{ background: '#fff', borderRadius: '14px' }} className="flex items-center px-4 py-3 gap-3">
           <Search size={18} color={FL.primary} />
-          <span style={{ color: '#9CA3AF', fontSize: '14px' }}>Buscar productos, laboratorios...</span>
+          <input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar productos, laboratorios..."
+            style={{ background: 'none', border: 'none', outline: 'none', fontSize: '14px', color: FL.text, flex: 1, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+          />
         </div>
         {/* Stats */}
         <div className="flex gap-3 mt-4">
           <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }} className="flex-1 p-3 text-center">
-            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>342</p>
+            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>
+              {loading ? '—' : productos.length}
+            </p>
             <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px' }}>Productos</p>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }} className="flex-1 p-3 text-center">
-            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>18</p>
+            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>
+              {loading ? '—' : labs.length - 1}
+            </p>
             <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px' }}>Laboratorios</p>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }} className="flex-1 p-3 text-center">
-            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>6</p>
+            <p style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>
+              {loading ? '—' : promos.length}
+            </p>
             <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px' }}>Promos activas</p>
           </div>
         </div>
@@ -64,7 +98,6 @@ export function CatalogoInicio({ onCategoria, onProducto }: Props) {
         {/* Categorías */}
         <div className="flex items-center justify-between mb-3">
           <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text }}>Categorías</p>
-          <button style={{ color: FL.primary, fontSize: '13px', fontWeight: 600 }}>Ver todas</button>
         </div>
         <div className="grid grid-cols-3 gap-3 mb-5">
           {CATEGORIAS.map(cat => {
@@ -84,75 +117,109 @@ export function CatalogoInicio({ onCategoria, onProducto }: Props) {
 
         {/* Labs chips */}
         <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text, marginBottom: '10px' }}>Laboratorios</p>
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-5" style={{ scrollbarWidth: 'none' }}>
-          {LABS.map(lab => (
-            <button key={lab} onClick={() => setLabActivo(lab)}
-              style={{
-                borderRadius: '20px', padding: '7px 14px', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 600,
-                background: labActivo === lab ? FL.gradient : '#fff',
-                color: labActivo === lab ? '#fff' : FL.textMuted,
-                border: labActivo === lab ? 'none' : `1.5px solid ${FL.border}`,
-                boxShadow: labActivo === lab ? FL.shadow : 'none',
-              }}>
-              {lab}
-            </button>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 mb-5">
+            <Loader2 size={16} color={FL.primary} style={{ animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: '13px', color: FL.textMuted }}>Cargando...</span>
+          </div>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-5" style={{ scrollbarWidth: 'none' }}>
+            {labs.map(lab => (
+              <button key={lab} onClick={() => setLabActivo(lab)}
+                style={{
+                  borderRadius: '20px', padding: '7px 14px', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 600,
+                  background: labActivo === lab ? FL.gradient : '#fff',
+                  color: labActivo === lab ? '#fff' : FL.textMuted,
+                  border: labActivo === lab ? 'none' : `1.5px solid ${FL.border}`,
+                  boxShadow: labActivo === lab ? FL.shadow : 'none',
+                  flexShrink: 0,
+                }}>
+                {lab}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Promociones activas */}
-        <div className="flex items-center justify-between mb-3">
-          <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text }}>🔥 Promociones Activas</p>
-          <button style={{ color: FL.primary, fontSize: '13px', fontWeight: 600 }}>Ver todas</button>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {PROMOS.map(prod => (
-            <button key={prod.id} onClick={() => onProducto(prod.id)}
-              style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, overflow: 'hidden' }}
-              className="flex items-center text-left active:scale-98 transition-transform">
-              <div style={{ background: `linear-gradient(135deg, ${prod.color}33, ${prod.color}55)`, width: '88px', minHeight: '88px' }} className="flex items-center justify-center flex-shrink-0">
-                <FlaskConical size={32} color={prod.color} />
-              </div>
-              <div className="flex-1 p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ background: FL.secondary + '22', color: FL.secondary, borderRadius: '6px', padding: '2px 7px', fontSize: '10px', fontWeight: 700 }}>
-                    {prod.promo}
-                  </span>
-                </div>
-                <p style={{ fontSize: '14px', fontWeight: 700, color: FL.text }}>{prod.nombre}</p>
-                <p style={{ fontSize: '12px', color: FL.textMuted }}>{prod.lab}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <p style={{ fontSize: '18px', fontWeight: 800, color: FL.primary }}>S/. {prod.precio.toFixed(2)}</p>
-                  <div style={{ background: FL.gradient, borderRadius: '10px', padding: '6px 12px' }}>
-                    <p style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>Ver más</p>
+        {promos.length > 0 && (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text }}>Promociones Activas</p>
+            </div>
+            <div className="flex flex-col gap-3 mb-5">
+              {promos.slice(0, 3).map(prod => (
+                <button key={prod.id} onClick={() => onProducto(prod.id)}
+                  style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, overflow: 'hidden' }}
+                  className="flex items-center text-left active:scale-98 transition-transform">
+                  <div style={{ background: `linear-gradient(135deg, ${FL.primary}22, ${FL.primary}44)`, width: '88px', minHeight: '88px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '8px' }}>
+                    <ProductImg producto={prod} />
                   </div>
-                </div>
-              </div>
-            </button>
-          ))}
+                  <div className="flex-1 p-3">
+                    <span style={{ background: FL.secondary + '22', color: FL.secondary, borderRadius: '6px', padding: '2px 7px', fontSize: '10px', fontWeight: 700, display: 'inline-block', marginBottom: '4px' }}>
+                      {prod.oferta}
+                    </span>
+                    <p style={{ fontSize: '14px', fontWeight: 700, color: FL.text }}>{prod.nombre}</p>
+                    {prod.concentracion && <p style={{ fontSize: '11px', color: FL.primary }}>{prod.concentracion}</p>}
+                    <p style={{ fontSize: '12px', color: FL.textMuted }}>{prod.laboratorio}</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p style={{ fontSize: '18px', fontWeight: 800, color: FL.primary }}>
+                        {prod.precio_contado != null ? `S/. ${prod.precio_contado.toFixed(2)}` : 'Consultar'}
+                      </p>
+                      <div style={{ background: FL.gradient, borderRadius: '10px', padding: '6px 12px' }}>
+                        <p style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>Ver más</p>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Productos */}
+        <div className="flex items-center justify-between mt-2 mb-3">
+          <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text }}>
+            {busqueda || labActivo !== 'Todos' ? `${filtrados.length} resultados` : 'Productos'}
+          </p>
         </div>
 
-        {/* Más productos */}
-        <div className="flex items-center justify-between mt-5 mb-3">
-          <p style={{ fontSize: '15px', fontWeight: 700, color: FL.text }}>Más productos</p>
-          <button style={{ color: FL.primary, fontSize: '13px', fontWeight: 600 }}>Ver catálogo</button>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {PRODUCTOS.slice(2, 8).map(prod => (
-            <button key={prod.id} onClick={() => onProducto(prod.id)}
-              style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, overflow: 'hidden' }}
-              className="text-left active:scale-95 transition-transform">
-              <div style={{ background: `linear-gradient(135deg, ${prod.color}22, ${prod.color}44)`, height: '80px' }} className="flex items-center justify-center">
-                <Pill size={28} color={prod.color} />
-              </div>
-              <div className="p-3">
-                <p style={{ fontSize: '12px', color: FL.textMuted, marginBottom: '2px' }}>{prod.lab}</p>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: FL.text, lineHeight: 1.3 }}>{prod.nombre}</p>
-                <p style={{ fontSize: '16px', fontWeight: 800, color: FL.primary, marginTop: '4px' }}>S/. {prod.precio.toFixed(2)}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Loader2 size={32} color={FL.primary} style={{ animation: 'spin 1s linear infinite' }} />
+            <p style={{ fontSize: '14px', color: FL.textMuted }}>Cargando catálogo desde Supabase...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filtrados.slice(0, 20).map(prod => (
+              <button key={prod.id} onClick={() => onProducto(prod.id)}
+                style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, overflow: 'hidden' }}
+                className="text-left active:scale-95 transition-transform">
+                <div style={{ background: `linear-gradient(135deg, ${FL.primary}18, ${FL.primary}30)`, height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '8px' }}>
+                  <ProductImg producto={prod} />
+                </div>
+                <div className="p-3">
+                  <p style={{ fontSize: '12px', color: FL.textMuted, marginBottom: '2px' }}>{prod.laboratorio}</p>
+                  <p style={{ fontSize: '13px', fontWeight: 700, color: FL.text, lineHeight: 1.3 }}>{prod.nombre}</p>
+                  {prod.concentracion && <p style={{ fontSize: '11px', color: FL.primary }}>{prod.concentracion}</p>}
+                  <p style={{ fontSize: '16px', fontWeight: 800, color: FL.primary, marginTop: '4px' }}>
+                    {prod.precio_contado != null ? `S/. ${prod.precio_contado.toFixed(2)}` : 'Consultar'}
+                  </p>
+                  {prod.oferta && (
+                    <div style={{ marginTop: '4px', background: FL.secondary + '18', borderRadius: '6px', padding: '3px 7px' }}>
+                      <p style={{ color: FL.secondary, fontSize: '10px', fontWeight: 700 }}>{prod.oferta}</p>
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!loading && filtrados.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <p style={{ fontSize: '14px', color: FL.textMuted, fontWeight: 600 }}>Sin resultados para tu búsqueda</p>
+          </div>
+        )}
       </div>
 
       {/* Bottom nav */}
@@ -164,6 +231,7 @@ export function CatalogoInicio({ onCategoria, onProducto }: Props) {
           </button>
         ))}
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

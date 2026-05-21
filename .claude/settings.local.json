@@ -7,7 +7,14 @@
       "Bash(npx vite *)",
       "Bash(cd \"/a/PropuestaFarmacia\" && cat package.json | grep -E '\"zustand|supabase\"')",
       "Read(//a/a/PropuestaFarmacia/**)",
-      "Bash(npx pnpm *)"
+      "Bash(npx pnpm *)",
+      "Bash(pnpm dev *)",
+      "Bash(Get-ChildItem -Path \"a:\\\\PropuestaFarmacia\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm run *)",
+      "Bash(pnpm tsc *)"
     ]
   }
 }

@@ -17,12 +17,16 @@ import { GestionCatalogo } from './components/admin/GestionCatalogo';
 import { GestionPedidos } from './components/admin/GestionPedidos';
 import { Promociones } from './components/admin/Promociones';
 import { Reportes } from './components/admin/Reportes';
+import { ImportarExcel } from '../modules/catalogo/ImportarExcel';
+import { SubirImagenes } from '../modules/catalogo/SubirImagenes';
+import { CatalogoImprimir } from '../modules/catalogo/CatalogoImprimir';
 
 type Role = 'cliente' | 'vendedor' | 'administrador';
 type Screen =
   | 'catalogo-inicio' | 'categoria' | 'detalle-producto'
   | 'login' | 'inicio-vendedor' | 'catalogo-tablet' | 'generador-pedido' | 'registrar-cobro' | 'recibo-digital' | 'pedidos-dia'
-  | 'dashboard' | 'cobranzas' | 'gestion-catalogo' | 'gestion-pedidos' | 'promociones' | 'reportes';
+  | 'dashboard' | 'cobranzas' | 'gestion-catalogo' | 'gestion-pedidos' | 'promociones' | 'reportes'
+  | 'catalogo-importar' | 'catalogo-imagenes' | 'catalogo-imprimir';
 
 const SCREENS: Record<Role, Array<{ id: Screen; label: string; num: number; emoji: string }>> = {
   cliente: [
@@ -46,6 +50,9 @@ const SCREENS: Record<Role, Array<{ id: Screen; label: string; num: number; emoj
     { id: 'gestion-pedidos', label: 'Pedidos', num: 14, emoji: '📋' },
     { id: 'promociones', label: 'Promociones', num: 15, emoji: '📢' },
     { id: 'reportes', label: 'Reportes', num: 16, emoji: '📊' },
+    { id: 'catalogo-importar', label: 'Importar Excel', num: 17, emoji: '📊' },
+    { id: 'catalogo-imagenes', label: 'Imágenes', num: 18, emoji: '🖼️' },
+    { id: 'catalogo-imprimir', label: 'Impr. Catálogo', num: 19, emoji: '🖨️' },
   ],
 };
 
@@ -90,7 +97,7 @@ export default function App() {
   const [role, setRole] = useState<Role>('cliente');
   const [screen, setScreen] = useState<Screen>('catalogo-inicio');
   const [categoriaActiva, setCategoriaActiva] = useState('Antibióticos');
-  const [productoActivo, setProductoActivo] = useState(1);
+  const [productoActivo, setProductoActivo] = useState<string>('');
   const [flujoMode, setFlujoMode] = useState<null | 'cliente' | 'vendedor'>(null);
   const [flujoStep, setFlujoStep] = useState(0);
 
@@ -134,9 +141,9 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'catalogo-inicio':
-        return <CatalogoInicio onCategoria={cat => { setCategoriaActiva(cat); if (flujoMode) { flujoNext(); } else navToScreen('categoria'); }} onProducto={id => { setProductoActivo(id); if (flujoMode) { setFlujoStep(2); setScreen('detalle-producto'); } else navToScreen('detalle-producto'); }} />;
+        return <CatalogoInicio onCategoria={cat => { setCategoriaActiva(cat); if (flujoMode) { flujoNext(); } else navToScreen('categoria'); }} onProducto={(id: string) => { setProductoActivo(id); if (flujoMode) { setFlujoStep(2); setScreen('detalle-producto'); } else navToScreen('detalle-producto'); }} />;
       case 'categoria':
-        return <CategoriaSeleccionada categoria={categoriaActiva} onBack={() => navToScreen('catalogo-inicio')} onProducto={id => { setProductoActivo(id); navToScreen('detalle-producto'); }} />;
+        return <CategoriaSeleccionada categoria={categoriaActiva} onBack={() => navToScreen('catalogo-inicio')} onProducto={(id: string) => { setProductoActivo(id); navToScreen('detalle-producto'); }} />;
       case 'detalle-producto':
         return <DetalleProducto productoId={productoActivo} onBack={() => navToScreen('categoria')} onContactar={() => { if (flujoMode) flujoNext(); }} />;
       case 'login':
@@ -159,6 +166,9 @@ export default function App() {
       case 'gestion-pedidos':
       case 'promociones':
       case 'reportes':
+      case 'catalogo-importar':
+      case 'catalogo-imagenes':
+      case 'catalogo-imprimir':
         return (
           <AdminLayout active={screen} onNav={s => navToScreen(s as Screen)}>
             {screen === 'dashboard' && <Dashboard />}
@@ -167,6 +177,9 @@ export default function App() {
             {screen === 'gestion-pedidos' && <GestionPedidos />}
             {screen === 'promociones' && <Promociones />}
             {screen === 'reportes' && <Reportes />}
+            {screen === 'catalogo-importar' && <ImportarExcel />}
+            {screen === 'catalogo-imagenes' && <SubirImagenes />}
+            {screen === 'catalogo-imprimir' && <CatalogoImprimir />}
           </AdminLayout>
         );
       default:

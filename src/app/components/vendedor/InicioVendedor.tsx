@@ -1,5 +1,5 @@
 import { ShoppingCart, DollarSign, Users, FileText, Camera, Package, TrendingUp, ChevronRight } from 'lucide-react';
-import { FL, CLIENTES, fmt } from '../../data/farmalink';
+import { FL } from '../../data/farmalink';
 
 interface Props {
   onPedido: () => void; onCobro: () => void; onCatalogo: () => void; onPedidos: () => void;
@@ -19,9 +19,7 @@ export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Pro
     { label: 'Mis Pedidos', icon: FileText, color: '#F87171', bg: '#FEF2F2', action: onPedidos },
   ];
 
-  const visitas = CLIENTES.slice(0, 4).map((c, i) => ({
-    ...c, hora: ['08:30', '10:00', '11:30', '14:00'][i], visitado: i < 2,
-  }));
+  const visitas: never[] = [];
 
   return (
     <div style={{ backgroundColor: FL.bg, fontFamily: "'Plus Jakarta Sans', sans-serif", color: FL.text }} className="min-h-full overflow-y-auto pb-6">
@@ -97,30 +95,11 @@ export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Pro
           <p style={{ fontSize: '15px', fontWeight: 700 }}>Mis clientes hoy</p>
           <button style={{ color: FL.primary, fontSize: '13px', fontWeight: 600 }}>Ver todos</button>
         </div>
-        <div className="flex flex-col gap-2">
-          {visitas.map(c => {
-            const est = ESTADO_COLORS[c.estado] || ESTADO_COLORS['Al día'];
-            return (
-              <div key={c.id} style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px 16px' }} className="flex items-center gap-3">
-                <div style={{ width: '42px', height: '42px', background: c.visitado ? FL.gradient : '#F3F4F6', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <p style={{ fontSize: '14px', fontWeight: 700, color: c.visitado ? '#fff' : FL.textMuted }}>
-                    {c.nombre.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
-                  </p>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: '13px', fontWeight: 700, color: FL.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nombre}</p>
-                  <p style={{ fontSize: '11px', color: FL.textMuted }}>{c.hora} · {c.dir.split(',')[0]}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span style={{ background: est.bg, color: est.color, borderRadius: '8px', padding: '2px 8px', fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {c.visitado ? '✓ Visitado' : c.estado}
-                  </span>
-                  {c.deuda > 0 && <p style={{ fontSize: '10px', color: FL.textMuted }}>{fmt(c.deuda)}</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {visitas.length === 0 ? (
+          <div style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '24px 16px', textAlign: 'center' }}>
+            <p style={{ fontSize: '13px', color: FL.textMuted }}>Sin clientes asignados aún — tabla no implementada</p>
+          </div>
+        ) : null}
       </div>
 
       {/* Performance */}

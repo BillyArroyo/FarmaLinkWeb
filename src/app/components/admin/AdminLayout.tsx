@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { LayoutDashboard, DollarSign, Package, ShoppingBag, Megaphone, BarChart3, Settings, Bell, LogOut, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, DollarSign, Package, ShoppingBag, Megaphone, BarChart3, Bell, LogOut, ChevronRight, FileSpreadsheet, ImagePlus, Printer } from 'lucide-react';
 import { FL } from '../../data/farmalink';
 
 const NAV_ITEMS = [
@@ -9,6 +9,12 @@ const NAV_ITEMS = [
   { id: 'gestion-pedidos', label: 'Pedidos', icon: ShoppingBag, badge: '5' },
   { id: 'promociones', label: 'Promociones', icon: Megaphone },
   { id: 'reportes', label: 'Reportes', icon: BarChart3 },
+];
+
+const CATALOG_ITEMS = [
+  { id: 'catalogo-importar', label: 'Importar Excel', icon: FileSpreadsheet },
+  { id: 'catalogo-imagenes', label: 'Subir Imágenes', icon: ImagePlus },
+  { id: 'catalogo-imprimir', label: 'Impr. Catálogo', icon: Printer },
 ];
 
 interface Props { children: ReactNode; active: string; onNav: (id: string) => void; }
@@ -32,7 +38,7 @@ export function AdminLayout({ children, active, onNav }: Props) {
         </div>
 
         {/* Nav */}
-        <nav style={{ padding: '16px 12px', flex: 1 }}>
+        <nav style={{ padding: '16px 12px', flex: 1, overflowY: 'auto' }}>
           <p style={{ fontSize: '10px', fontWeight: 700, color: FL.textMuted, padding: '0 8px', marginBottom: '8px', letterSpacing: '0.8px' }}>NAVEGACIÓN</p>
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
@@ -53,6 +59,28 @@ export function AdminLayout({ children, active, onNav }: Props) {
                 {item.badge && (
                   <span style={{ background: '#EF4444', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 800 }}>{item.badge}</span>
                 )}
+                {isActive && <ChevronRight size={14} color={FL.primary} />}
+              </button>
+            );
+          })}
+
+          <p style={{ fontSize: '10px', fontWeight: 700, color: FL.textMuted, padding: '0 8px', marginBottom: '8px', marginTop: '16px', letterSpacing: '0.8px' }}>CATÁLOGO</p>
+          {CATALOG_ITEMS.map(item => {
+            const Icon = item.icon;
+            const isActive = active === item.id;
+            return (
+              <button key={item.id} onClick={() => onNav(item.id)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '12px', marginBottom: '4px',
+                  background: isActive ? FL.primary + '12' : 'transparent',
+                  border: isActive ? `1.5px solid ${FL.primary}25` : '1.5px solid transparent',
+                  cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  transition: 'all 0.15s',
+                }}>
+                <Icon size={18} color={isActive ? FL.primary : FL.textMuted} />
+                <span style={{ fontSize: '14px', fontWeight: isActive ? 700 : 500, color: isActive ? FL.primary : FL.text, flex: 1, textAlign: 'left' }}>
+                  {item.label}
+                </span>
                 {isActive && <ChevronRight size={14} color={FL.primary} />}
               </button>
             );

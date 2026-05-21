@@ -1,34 +1,37 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, Minus, WifiOff, ChevronDown, Trash2 } from 'lucide-react';
-import { FL, PRODUCTOS, CLIENTES, fmt } from '../../data/farmalink';
+import { ArrowLeft, Plus, Minus, WifiOff, Trash2, Loader2 } from 'lucide-react';
+import { FL, fmt } from '../../data/farmalink';
+import { useProductos, imgUrl, ProductoSupabase } from '../../../modules/catalogo/hooks/useProductos';
 
 interface Props { onBack: () => void; onConfirmar: () => void; }
 
-export function GeneradorPedido({ onBack, onConfirmar }: Props) {
-  const [clienteId, setClienteId] = useState(1);
-  const [offline] = useState(true);
-  const [cantidades, setCantidades] = useState<Record<number, number>>({ 1: 12, 2: 50, 7: 20 });
-  const [showClientePicker, setShowClientePicker] = useState(false);
+function ProductImg({ producto }: { producto: ProductoSupabase }) {
+  const [err, setErr] = useState(false);
+  if (producto.imagen_cargada && !err) {
+    return <img src={imgUrl(producto.id)} alt={producto.nombre} onError={() => setErr(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+  }
+  return <span style={{ fontSize: '18px' }}>💊</span>;
+}
 
-  const cliente = CLIENTES.find(c => c.id === clienteId)!;
+export function GeneradorPedido({ onBack, onConfirmar }: Props) {
+  const { productos, loading } = useProductos();
+  const [offline] = useState(false);
+  const [cantidades, setCantidades] = useState<Record<string, number>>({});
+
   const productosEnPedido = Object.entries(cantidades)
     .filter(([, cant]) => cant > 0)
     .map(([id, cant]) => {
-      const prod = PRODUCTOS.find(p => p.id === Number(id))!;
-      const subtotal = prod.precio * cant;
-      let gratis = 0;
-      if (prod.promoX && cant >= prod.promoX) gratis = Math.floor(cant / prod.promoX) * (prod.promoY || 0);
-      return { ...prod, cant, gratis, subtotal };
-    });
+      const prod = productos.find(p => p.id === id)!;
+      if (!prod) return null;
+      const subtotal = (prod.precio_contado ?? 0) * cant;
+      return { ...prod, cant, subtotal };
+    })
+    .filter(Boolean) as (ProductoSupabase & { cant: number; subtotal: number })[];
 
-  const subtotal = productosEnPedido.reduce((a, p) => a + p.subtotal, 0);
-  const descuentoPromo = productosEnPedido.reduce((a, p) => a + (p.gratis * p.precio), 0);
-  const total = subtotal - descuentoPromo;
-
-  const ajustar = (id: number, delta: number) => setCantidades(prev => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
-  const eliminar = (id: number) => setCantidades(prev => { const n = { ...prev }; delete n[id]; return n; });
-
-  const productosSugeridos = PRODUCTOS.filter(p => !cantidades[p.id] || cantidades[p.id] === 0).slice(0, 4);
+  const total = productosEnPedido.reduce((a, p) => a + p.subtotal, 0);
+  const ajustar = (id: string, delta: number) => setCantidades(prev => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
+  const eliminar = (id: string) => setCantidades(prev => { const n = { ...prev }; delete n[id]; return n; });
+  const sugeridos = productos.filter(p => !cantidades[p.id] || cantidades[p.id] === 0).slice(0, 4);
 
   return (
     <div style={{ backgroundColor: FL.bg, fontFamily: "'Plus Jakarta Sans', sans-serif", color: FL.text }} className="min-h-full flex flex-col">
@@ -43,113 +46,91 @@ export function GeneradorPedido({ onBack, onConfirmar }: Props) {
         </div>
       </div>
 
-      {/* Offline banner */}
       {offline && (
         <div style={{ background: '#FFFBEB', borderBottom: '1px solid #FDE68A', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <WifiOff size={16} color={FL.warning} />
-          <p style={{ fontSize: '12px', fontWeight: 600, color: '#92400E' }}>Modo sin conexión — El pedido se enviará cuando recuperes la señal</p>
+          <p style={{ fontSize: '12px', fontWeight: 600, color: '#92400E' }}>Modo sin conexión — El pedido se guardará localmente</p>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {/* Selector de cliente */}
+      {/* Cliente — placeholder */}
+      <div className="px-4 pt-4">
         <p style={{ fontSize: '13px', fontWeight: 700, color: FL.textMuted, marginBottom: '8px' }}>CLIENTE</p>
-        <button onClick={() => setShowClientePicker(!showClientePicker)}
-          style={{ width: '100%', background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', border: `2px solid ${FL.primary}30` }}>
-          <div style={{ width: '40px', height: '40px', background: FL.gradient, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <p style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{cliente.nombre.split(' ').map(w => w[0]).join('').slice(0, 2)}</p>
-          </div>
-          <div className="flex-1 text-left">
-            <p style={{ fontSize: '14px', fontWeight: 700, color: FL.text }}>{cliente.nombre}</p>
-            <p style={{ fontSize: '11px', color: FL.textMuted }}>{cliente.dir}</p>
-          </div>
-          <ChevronDown size={18} color={FL.textMuted} style={{ transform: showClientePicker ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
-        </button>
+        <div style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px 16px', marginBottom: '16px', border: `2px dashed ${FL.border}` }}>
+          <p style={{ fontSize: '13px', color: FL.textMuted, textAlign: 'center' }}>Selección de clientes próximamente</p>
+        </div>
+      </div>
 
-        {showClientePicker && (
-          <div style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadowMd, marginTop: '-12px', marginBottom: '16px', overflow: 'hidden' }}>
-            {CLIENTES.map(c => (
-              <button key={c.id} onClick={() => { setClienteId(c.id); setShowClientePicker(false); }}
-                style={{ width: '100%', padding: '12px 16px', textAlign: 'left', background: c.id === clienteId ? FL.primary + '10' : '#fff', border: 'none', cursor: 'pointer', borderBottom: `1px solid ${FL.border}`, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: c.id === clienteId ? FL.primary : FL.text }}>{c.nombre}</p>
-                <p style={{ fontSize: '11px', color: FL.textMuted }}>{c.dir}</p>
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {/* Productos en pedido */}
+        {productosEnPedido.length > 0 && (
+          <>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: FL.textMuted, marginBottom: '8px' }}>PRODUCTOS EN PEDIDO</p>
+            <div className="flex flex-col gap-2 mb-4">
+              {productosEnPedido.map(prod => (
+                <div key={prod.id} style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px' }}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div style={{ width: '36px', height: '36px', background: FL.primary + '18', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                      <ProductImg producto={prod} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p style={{ fontSize: '13px', fontWeight: 700, color: FL.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prod.nombre}</p>
+                      <p style={{ fontSize: '11px', color: FL.textMuted }}>{prod.laboratorio} · S/. {(prod.precio_contado ?? 0).toFixed(2)} c/u</p>
+                    </div>
+                    <button onClick={() => eliminar(prod.id)} style={{ background: '#FEE2E2', borderRadius: '8px', padding: '6px', border: 'none', cursor: 'pointer' }}>
+                      <Trash2 size={14} color="#DC2626" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => ajustar(prod.id, -1)} style={{ width: '32px', height: '32px', background: FL.bg, borderRadius: '10px', border: `1.5px solid ${FL.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <Minus size={14} color={FL.text} />
+                      </button>
+                      <p style={{ fontSize: '18px', fontWeight: 800, color: FL.text, minWidth: '32px', textAlign: 'center' }}>{prod.cant}</p>
+                      <button onClick={() => ajustar(prod.id, 1)} style={{ width: '32px', height: '32px', background: FL.primary, borderRadius: '10px', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <Plus size={14} color="#fff" />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '15px', fontWeight: 800, color: FL.primary }}>{fmt(prod.subtotal)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Sugeridos */}
+        <p style={{ fontSize: '13px', fontWeight: 700, color: FL.textMuted, marginBottom: '8px' }}>AGREGAR PRODUCTOS</p>
+        {loading ? (
+          <div className="flex items-center gap-2 py-4">
+            <Loader2 size={16} color={FL.primary} style={{ animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: '13px', color: FL.textMuted }}>Cargando catálogo...</span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 mb-4">
+            {sugeridos.map(prod => (
+              <button key={prod.id} onClick={() => ajustar(prod.id, 1)}
+                style={{ background: '#fff', borderRadius: '12px', boxShadow: FL.shadow, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', border: `1px dashed ${FL.border}` }}
+                className="text-left">
+                <div style={{ width: '32px', height: '32px', background: FL.primary + '18', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  <ProductImg producto={prod} />
+                </div>
+                <div className="flex-1">
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: FL.text }}>{prod.nombre}</p>
+                  <p style={{ fontSize: '11px', color: FL.textMuted }}>
+                    {prod.precio_contado != null ? `S/. ${prod.precio_contado.toFixed(2)}` : 'Consultar'}
+                  </p>
+                </div>
+                <Plus size={18} color={FL.primary} />
               </button>
             ))}
           </div>
         )}
-
-        {/* Productos en pedido */}
-        <p style={{ fontSize: '13px', fontWeight: 700, color: FL.textMuted, marginBottom: '8px' }}>PRODUCTOS EN PEDIDO</p>
-        <div className="flex flex-col gap-2 mb-4">
-          {productosEnPedido.map(prod => (
-            <div key={prod.id} style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px' }}>
-              <div className="flex items-center gap-3 mb-2">
-                <div style={{ width: '36px', height: '36px', background: prod.color + '20', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: '18px' }}>💊</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: '13px', fontWeight: 700, color: FL.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prod.nombre}</p>
-                  <p style={{ fontSize: '11px', color: FL.textMuted }}>{prod.lab} · S/. {prod.precio.toFixed(2)} c/u</p>
-                </div>
-                <button onClick={() => eliminar(prod.id)} style={{ background: '#FEE2E2', borderRadius: '8px', padding: '6px', border: 'none', cursor: 'pointer' }}>
-                  <Trash2 size={14} color="#DC2626" />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <button onClick={() => ajustar(prod.id, -1)} style={{ width: '32px', height: '32px', background: FL.bg, borderRadius: '10px', border: `1.5px solid ${FL.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                    <Minus size={14} color={FL.text} />
-                  </button>
-                  <p style={{ fontSize: '18px', fontWeight: 800, color: FL.text, minWidth: '32px', textAlign: 'center' }}>{prod.cant}</p>
-                  <button onClick={() => ajustar(prod.id, 1)} style={{ width: '32px', height: '32px', background: FL.primary, borderRadius: '10px', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                    <Plus size={14} color="#fff" />
-                  </button>
-                </div>
-                <div className="text-right">
-                  <p style={{ fontSize: '15px', fontWeight: 800, color: FL.primary }}>S/. {prod.subtotal.toFixed(2)}</p>
-                  {prod.gratis > 0 && (
-                    <p style={{ fontSize: '11px', color: FL.secondary, fontWeight: 700 }}>+{prod.gratis} gratis 🎁</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Sugeridos */}
-        <p style={{ fontSize: '13px', fontWeight: 700, color: FL.textMuted, marginBottom: '8px' }}>AGREGAR PRODUCTOS</p>
-        <div className="flex flex-col gap-2 mb-4">
-          {productosSugeridos.map(prod => (
-            <button key={prod.id} onClick={() => ajustar(prod.id, 1)}
-              style={{ background: '#fff', borderRadius: '12px', boxShadow: FL.shadow, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', border: `1px dashed ${FL.border}` }}
-              className="text-left">
-              <div style={{ width: '32px', height: '32px', background: prod.color + '20', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '16px' }}>💊</span>
-              </div>
-              <div className="flex-1">
-                <p style={{ fontSize: '13px', fontWeight: 600, color: FL.text }}>{prod.nombre}</p>
-                <p style={{ fontSize: '11px', color: FL.textMuted }}>S/. {prod.precio.toFixed(2)}</p>
-              </div>
-              <Plus size={18} color={FL.primary} />
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Totals + actions */}
       <div style={{ background: '#fff', borderTop: `1px solid ${FL.border}`, padding: '16px' }}>
         <div className="flex flex-col gap-1 mb-3">
-          <div className="flex justify-between">
-            <p style={{ fontSize: '13px', color: FL.textMuted }}>Subtotal</p>
-            <p style={{ fontSize: '13px', color: FL.text }}>{fmt(subtotal)}</p>
-          </div>
-          {descuentoPromo > 0 && (
-            <div className="flex justify-between">
-              <p style={{ fontSize: '13px', color: FL.secondary }}>Descuento promo 🎁</p>
-              <p style={{ fontSize: '13px', color: FL.secondary, fontWeight: 700 }}>-{fmt(descuentoPromo)}</p>
-            </div>
-          )}
-          <div style={{ height: '1px', background: FL.border, margin: '4px 0' }} />
           <div className="flex justify-between">
             <p style={{ fontSize: '15px', fontWeight: 800, color: FL.text }}>TOTAL</p>
             <p style={{ fontSize: '20px', fontWeight: 900, color: FL.primary }}>{fmt(total)}</p>
@@ -160,11 +141,12 @@ export function GeneradorPedido({ onBack, onConfirmar }: Props) {
             Guardar borrador
           </button>
           <button onClick={onConfirmar}
-            style={{ flex: 2, background: FL.gradient, borderRadius: '14px', padding: '13px', color: '#fff', fontSize: '14px', fontWeight: 700, fontFamily: "'Plus Jakarta Sans', sans-serif", border: 'none', cursor: 'pointer' }}>
+            style={{ flex: 2, background: productosEnPedido.length > 0 ? FL.gradient : '#E5E7EB', borderRadius: '14px', padding: '13px', color: productosEnPedido.length > 0 ? '#fff' : FL.textMuted, fontSize: '14px', fontWeight: 700, fontFamily: "'Plus Jakarta Sans', sans-serif", border: 'none', cursor: 'pointer' }}>
             ✓ Confirmar pedido
           </button>
         </div>
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
