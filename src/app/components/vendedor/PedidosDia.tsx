@@ -1,5 +1,5 @@
-import { ArrowLeft, ChevronRight, TrendingUp } from 'lucide-react';
-import { FL, PEDIDOS, fmt } from '../../data/farmalink';
+import { ArrowLeft, TrendingUp } from 'lucide-react';
+import { FL } from '../../data/farmalink';
 
 interface Props { onBack: () => void; onPedido: (id: string) => void; }
 
@@ -10,13 +10,7 @@ const ESTADO: Record<string, { bg: string; color: string; label: string }> = {
   'Confirmado': { bg: '#DBEAFE', color: '#1D4ED8', label: '📋 Confirmado' },
 };
 
-export function PedidosDia({ onBack, onPedido }: Props) {
-  const pedidos = PEDIDOS.slice(0, 6);
-  const cobrado = pedidos.filter(p => p.estado === 'Cobrado').reduce((a, p) => a + p.monto, 0);
-  const pendiente = pedidos.filter(p => p.estado === 'Pendiente').reduce((a, p) => a + p.monto, 0);
-  const nCobrado = pedidos.filter(p => p.estado === 'Cobrado').length;
-  const nPendiente = pedidos.filter(p => p.estado === 'Pendiente').length;
-
+export function PedidosDia({ onBack }: Props) {
   return (
     <div style={{ backgroundColor: FL.bg, fontFamily: "'Plus Jakarta Sans', sans-serif", color: FL.text }} className="min-h-full flex flex-col">
       {/* Header */}
@@ -26,7 +20,7 @@ export function PedidosDia({ onBack, onPedido }: Props) {
         </button>
         <div>
           <p style={{ fontSize: '17px', fontWeight: 800 }}>Pedidos del Día</p>
-          <p style={{ fontSize: '11px', color: FL.textMuted }}>Miércoles 14/05/2026 · Carlos Quispe</p>
+          <p style={{ fontSize: '11px', color: FL.textMuted }}>Sin pedidos registrados aún</p>
         </div>
       </div>
 
@@ -39,9 +33,9 @@ export function PedidosDia({ onBack, onPedido }: Props) {
           </div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Total pedidos', value: pedidos.length.toString(), sub: '' },
-              { label: 'Cobrado', value: `S/. ${(cobrado / 1000).toFixed(1)}k`, sub: `${nCobrado} pedidos` },
-              { label: 'Pendiente', value: `S/. ${(pendiente / 1000).toFixed(1)}k`, sub: `${nPendiente} pedidos` },
+              { label: 'Total pedidos', value: '0', sub: '' },
+              { label: 'Cobrado', value: 'S/. 0.00', sub: '0 pedidos' },
+              { label: 'Pendiente', value: 'S/. 0.00', sub: '0 pedidos' },
             ].map(s => (
               <div key={s.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
                 <p style={{ color: '#fff', fontSize: '18px', fontWeight: 800 }}>{s.value}</p>
@@ -53,49 +47,15 @@ export function PedidosDia({ onBack, onPedido }: Props) {
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="px-4 mt-4">
-        <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {['Todos', 'Cobrados', 'Pendientes', 'Observados'].map(tab => (
-            <button key={tab} style={{ borderRadius: '20px', padding: '6px 16px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', background: tab === 'Todos' ? FL.gradient : '#fff', color: tab === 'Todos' ? '#fff' : FL.textMuted, border: tab === 'Todos' ? 'none' : `1.5px solid ${FL.border}`, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              {tab}
-            </button>
-          ))}
+      {/* Empty state */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8">
+        <div style={{ width: '64px', height: '64px', background: '#fff', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: FL.shadow }}>
+          <span style={{ fontSize: '28px' }}>📋</span>
         </div>
-      </div>
-
-      {/* Pedidos list */}
-      <div className="px-4 mt-3 flex-1 overflow-y-auto pb-6">
-        <div className="flex flex-col gap-3">
-          {pedidos.map(ped => {
-            const est = ESTADO[ped.estado] || ESTADO['Pendiente'];
-            return (
-              <button key={ped.id} onClick={() => onPedido(ped.id)}
-                style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}
-                className="active:scale-98 transition-transform">
-                <div style={{ width: '44px', height: '44px', background: est.bg, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <p style={{ fontSize: '18px' }}>{ped.estado === 'Cobrado' ? '✓' : ped.estado === 'Pendiente' ? '⏳' : '⚠'}</p>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p style={{ fontSize: '13px', fontWeight: 800, color: FL.text }}>{ped.id}</p>
-                    <span style={{ background: est.bg, color: est.color, borderRadius: '7px', padding: '2px 7px', fontSize: '10px', fontWeight: 700 }}>{est.label}</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: FL.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ped.cliente}</p>
-                  <div className="flex items-center gap-2">
-                    <p style={{ fontSize: '11px', color: FL.textMuted }}>{ped.hora}</p>
-                    {ped.metodo !== '-' && <span style={{ background: '#F3F4F6', borderRadius: '6px', padding: '1px 6px', fontSize: '10px', color: FL.textMuted }}>{ped.metodo}</span>}
-                    <p style={{ fontSize: '11px', color: FL.textMuted }}>{ped.items} productos</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <p style={{ fontSize: '16px', fontWeight: 800, color: FL.primary }}>S/. {(ped.monto / 1000).toFixed(1)}k</p>
-                  <ChevronRight size={16} color={FL.textMuted} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <p style={{ fontSize: '16px', fontWeight: 700, color: FL.text, textAlign: 'center' }}>Sin pedidos hoy</p>
+        <p style={{ fontSize: '13px', color: FL.textMuted, textAlign: 'center', lineHeight: 1.5 }}>
+          La tabla de pedidos aún no ha sido implementada. Genera tu primer pedido desde el catálogo.
+        </p>
       </div>
 
       {/* Bottom nav */}

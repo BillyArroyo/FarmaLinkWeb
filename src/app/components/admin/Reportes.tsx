@@ -1,7 +1,21 @@
 import { useState } from 'react';
 import { Download, FileSpreadsheet, TrendingUp, TrendingDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { FL, VENTAS_SEMANA, DIST_LABORATORIO, VENDEDORES, fmt } from '../../data/farmalink';
+import { FL, fmt } from '../../data/farmalink';
+
+const VENTAS_SEMANA = [
+  { dia: 'Lun', monto: 12400 }, { dia: 'Mar', monto: 18600 }, { dia: 'Mié', monto: 15200 },
+  { dia: 'Jue', monto: 21800 }, { dia: 'Vie', monto: 19300 }, { dia: 'Sáb', monto: 14100 }, { dia: 'Hoy', monto: 13310 },
+];
+const DIST_LABORATORIO = [
+  { name: 'Genfar', value: 35, color: '#4AABDB' }, { name: 'MK', value: 22, color: '#7ECBA1' },
+  { name: 'Roemmers', value: 18, color: '#F87171' }, { name: 'Pfizer', value: 12, color: '#A78BFA' }, { name: 'Otros', value: 13, color: '#FBBF24' },
+];
+const VENDEDORES = [
+  { id: 1, nombre: 'Carlos Quispe', zona: 'Zona Norte', pedidos: 8, cobrado: 4280.00, clientes: 12, meta: 6000, avatar: 'CQ' },
+  { id: 2, nombre: 'María Huanca', zona: 'Zona Sur', pedidos: 6, cobrado: 3150.00, clientes: 9, meta: 5000, avatar: 'MH' },
+  { id: 3, nombre: 'José Bellido', zona: 'Zona Centro', pedidos: 10, cobrado: 5890.00, clientes: 15, meta: 7000, avatar: 'JB' },
+];
 
 const TABS_REP = ['Ventas', 'Cobranzas', 'Vendedores'];
 
