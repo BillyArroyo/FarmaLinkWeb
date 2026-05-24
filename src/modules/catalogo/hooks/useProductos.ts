@@ -16,9 +16,11 @@ export interface ProductoSupabase {
 }
 
 const STORAGE_BASE = 'https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos';
+const EMPRESA = 'CanaanFarma';
 
-export function imgUrl(id: string): string {
-  return `${STORAGE_BASE}/${id}_1.png`;
+export function imgUrl(id: string, imagenes_urls?: string[] | null): string {
+  if (imagenes_urls?.[0]) return imagenes_urls[0];
+  return `${STORAGE_BASE}/${EMPRESA}/${id}.png`;
 }
 
 export function useProductos() {

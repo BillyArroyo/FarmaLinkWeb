@@ -13,6 +13,7 @@ interface ProductoDB {
   precio_credito: number | null;
   oferta: string | null;
   imagen_cargada: boolean;
+  imagenes_urls: string[] | null;
   activo: boolean;
 }
 
@@ -47,10 +48,12 @@ const LABEL_STYLE: React.CSSProperties = {
   display: 'block', marginBottom: '6px',
 };
 
-// Miniatura de imagen por ID — usa URL construida, onError muestra cápsula gris
-function ImageThumb({ id, hasFoto, size = 40 }: { id: string; hasFoto: boolean; size?: number }) {
+const STORAGE_BASE_GC = 'https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos';
+
+// Miniatura de imagen por ID — usa imagenes_urls[0] si existe, sino construye URL
+function ImageThumb({ id, hasFoto, imagenes_urls, size = 40 }: { id: string; hasFoto: boolean; imagenes_urls?: string[] | null; size?: number }) {
   const [err, setErr] = useState(false);
-  const url = `https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos/${id}_1.png`;
+  const url = imagenes_urls?.[0] ?? `${STORAGE_BASE_GC}/CanaanFarma/${id}.png`;
 
   return (
     <div style={{
@@ -109,7 +112,7 @@ export function GestionCatalogo() {
   useEffect(() => {
     supabase
       .from('productos')
-      .select('id, nombre, concentracion, presentacion, laboratorio, precio_contado, precio_credito, oferta, imagen_cargada, activo')
+      .select('id, nombre, concentracion, presentacion, laboratorio, precio_contado, precio_credito, oferta, imagen_cargada, imagenes_urls, activo')
       .eq('activo', true)
       .order('id')
       .then(({ data, error }) => {
@@ -263,7 +266,7 @@ export function GestionCatalogo() {
 
             {/* Imagen actual */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', background: FL.bg, borderRadius: '14px', marginBottom: '22px', border: `1px solid ${FL.border}` }}>
-              <ImageThumb id={editProduct.id} hasFoto={editProduct.imagen_cargada} size={52} />
+              <ImageThumb id={editProduct.id} hasFoto={editProduct.imagen_cargada} imagenes_urls={editProduct.imagenes_urls} size={52} />
               <div>
                 <p style={{ fontSize: '11px', fontWeight: 700, color: FL.textMuted, marginBottom: '4px' }}>IMAGEN DEL PRODUCTO</p>
                 {editProduct.imagen_cargada
@@ -402,7 +405,7 @@ export function GestionCatalogo() {
                         : <span style={{ color: FL.textMuted, fontSize: '13px' }}>—</span>}
                     </td>
                     <td style={{ padding: '12px 14px' }}>
-                      <ImageThumb id={prod.id} hasFoto={prod.imagen_cargada} size={40} />
+                      <ImageThumb id={prod.id} hasFoto={prod.imagen_cargada} imagenes_urls={prod.imagenes_urls} size={40} />
                     </td>
                     <td style={{ padding: '12px 14px' }}>
                       <div style={{ display: 'flex', gap: '6px' }}>

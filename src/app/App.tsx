@@ -3,6 +3,7 @@ import { FL } from './data/farmalink';
 import { CatalogoInicio } from './components/cliente/CatalogoInicio';
 import { CategoriaSeleccionada } from './components/cliente/CategoriaSeleccionada';
 import { DetalleProducto } from './components/cliente/DetalleProducto';
+import { CarritoCheckout } from './components/cliente/CarritoCheckout';
 import { Login } from './components/vendedor/Login';
 import { InicioVendedor } from './components/vendedor/InicioVendedor';
 import { CatalogoTablet } from './components/vendedor/CatalogoTablet';
@@ -23,7 +24,7 @@ import { CatalogoImprimir } from '../modules/catalogo/CatalogoImprimir';
 
 type Role = 'cliente' | 'vendedor' | 'administrador';
 type Screen =
-  | 'catalogo-inicio' | 'categoria' | 'detalle-producto'
+  | 'catalogo-inicio' | 'categoria' | 'detalle-producto' | 'carrito-checkout'
   | 'login' | 'inicio-vendedor' | 'catalogo-tablet' | 'generador-pedido' | 'registrar-cobro' | 'recibo-digital' | 'pedidos-dia'
   | 'dashboard' | 'cobranzas' | 'gestion-catalogo' | 'gestion-pedidos' | 'promociones' | 'reportes'
   | 'catalogo-importar' | 'catalogo-imagenes' | 'catalogo-imprimir';
@@ -33,6 +34,7 @@ const SCREENS: Record<Role, Array<{ id: Screen; label: string; num: number; emoj
     { id: 'catalogo-inicio', label: 'Catálogo Inicio', num: 1, emoji: '🏠' },
     { id: 'categoria', label: 'Categoría', num: 2, emoji: '💊' },
     { id: 'detalle-producto', label: 'Detalle Producto', num: 3, emoji: '🔍' },
+    { id: 'carrito-checkout', label: 'Mi Pedido', num: 20, emoji: '🛒' },
   ],
   vendedor: [
     { id: 'login', label: 'Login', num: 4, emoji: '🔐' },
@@ -62,7 +64,7 @@ const ROLE_LABELS: Record<Role, { label: string; emoji: string; sub: string }> =
   administrador: { label: 'Administrador', emoji: '🏢', sub: 'Oficina / Desktop' },
 };
 
-const FLUJO_CLIENTE: Screen[] = ['catalogo-inicio', 'categoria', 'detalle-producto'];
+const FLUJO_CLIENTE: Screen[] = ['catalogo-inicio', 'categoria', 'detalle-producto', 'carrito-checkout'];
 const FLUJO_VENDEDOR: Screen[] = ['login', 'inicio-vendedor', 'catalogo-tablet', 'generador-pedido', 'registrar-cobro', 'recibo-digital', 'pedidos-dia'];
 
 function MobileFrame({ children }: { children: React.ReactNode }) {
@@ -141,11 +143,17 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'catalogo-inicio':
-        return <CatalogoInicio onCategoria={cat => { setCategoriaActiva(cat); if (flujoMode) { flujoNext(); } else navToScreen('categoria'); }} onProducto={(id: string) => { setProductoActivo(id); if (flujoMode) { setFlujoStep(2); setScreen('detalle-producto'); } else navToScreen('detalle-producto'); }} />;
+        return <CatalogoInicio
+          onCategoria={cat => { setCategoriaActiva(cat); if (flujoMode) { flujoNext(); } else navToScreen('categoria'); }}
+          onProducto={(id: string) => { setProductoActivo(id); if (flujoMode) { setFlujoStep(2); setScreen('detalle-producto'); } else navToScreen('detalle-producto'); }}
+          onCarrito={() => navToScreen('carrito-checkout')}
+        />;
+      case 'carrito-checkout':
+        return <CarritoCheckout onBack={() => navToScreen('catalogo-inicio')} />;
       case 'categoria':
         return <CategoriaSeleccionada categoria={categoriaActiva} onBack={() => navToScreen('catalogo-inicio')} onProducto={(id: string) => { setProductoActivo(id); navToScreen('detalle-producto'); }} />;
       case 'detalle-producto':
-        return <DetalleProducto productoId={productoActivo} onBack={() => navToScreen('categoria')} onContactar={() => { if (flujoMode) flujoNext(); }} />;
+        return <DetalleProducto productoId={productoActivo} onBack={() => navToScreen('categoria')} onContactar={() => { if (flujoMode) flujoNext(); }} onCarrito={() => { if (flujoMode) { setFlujoStep(3); setScreen('carrito-checkout'); } else navToScreen('carrito-checkout'); }} />;
       case 'login':
         return <Login onLogin={() => { if (flujoMode) flujoNext(); else navToScreen('inicio-vendedor'); }} />;
       case 'inicio-vendedor':
