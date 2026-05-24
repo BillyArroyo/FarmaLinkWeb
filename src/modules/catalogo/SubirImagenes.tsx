@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, XCircle, Upload, Loader2, RefreshCw, ImageOff, Pencil, X, Save, Search } from 'lucide-react';
+import { CheckCircle2, XCircle, Upload, Loader2, RefreshCw, ImageOff, Pencil, X, Save, Search, RefreshCcw } from 'lucide-react';
 import { FL } from '../../app/data/farmalink';
 import { supabase } from '../../lib/supabase';
 
@@ -78,23 +78,33 @@ export function SubirImagenes() {
   const [saving, setSaving] = useState(false);
 
   const [productoActivo, setProductoActivo] = useState<Producto | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const EMPRESA = 'CanaanFarma';
+  const STORAGE_BASE = 'https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos';
 
   const cargadas = productos.filter(p => (p.imagenes_urls?.length || 0) > 0 || p.imagen_cargada).length;
   const pct = productos.length ? Math.round((cargadas / productos.length) * 100) : 0;
 
-  async function fetchProductos() {
+  async function fetchProductos(autoSync = false) {
     setLoading(true);
     const { data, error } = await supabase
       .from('productos')
       .select('id, nombre, concentracion, presentacion, laboratorio, precio_contado, precio_credito, oferta, fecha_vencimiento, imagen_nombre, imagen_cargada, imagenes_urls')
       .order('id');
-    if (!error && data) setProductos(data.map(p => ({ ...p, imagenes_urls: p.imagenes_urls ?? [] })) as Produto[]);
+    if (!error && data) {
+      const mapped = data.map(p => ({ ...p, imagenes_urls: p.imagenes_urls ?? [] })) as Produto[];
+      setProductos(mapped);
+      if (autoSync && mapped.some(p => (p.imagenes_urls?.length ?? 0) === 0)) {
+        syncFromStorage();
+      }
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    fetchProductos();
+    fetchProductos(true);
 
     const channel = supabase
       .channel('subir-imagenes-rt')
@@ -130,7 +140,8 @@ export function SubirImagenes() {
     if (urls.length >= 3) return;
 
     const slot = urls.length + 1;
-    const fileName = `${p.id}_${slot}.png`;
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const fileName = `${EMPRESA}/${p.id}_${slot}.${ext}`;
     const id = p.id;
 
     console.log('[SubirImagenes] Archivo seleccionado:', file.name, '| Producto:', id);
@@ -215,6 +226,46 @@ export function SubirImagenes() {
       console.error('Error guardando:', e);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function syncFromStorage() {
+    setSyncing(true);
+    try {
+      // Lista SOLO los archivos que existen realmente en Storage
+      const { data: files, error: listErr } = await supabase.storage
+        .from('imagenes-productos')
+        .list(EMPRESA, { limit: 1000 });
+
+      if (listErr) {
+        alert(`Error al leer Storage: ${listErr.message}`);
+        return;
+      }
+
+      const archivos = (files ?? []).filter(f => /^CF-\d+\./i.test(f.name));
+      if (archivos.length === 0) {
+        alert(`No se encontraron archivos en CanaanFarma/. Verifica el bucket.`);
+        return;
+      }
+
+      // Solo actualiza productos que TIENEN archivo en Storage
+      for (const archivo of archivos) {
+        const id = archivo.name.replace(/\.[^.]+$/, ''); // CF-00001.png → CF-00001
+        const { data: urlData } = supabase.storage
+          .from('imagenes-productos')
+          .getPublicUrl(`${EMPRESA}/${archivo.name}`);
+        await supabase
+          .from('productos')
+          .update({ imagenes_urls: [urlData.publicUrl], imagen_cargada: true })
+          .eq('id', id);
+      }
+
+      await fetchProductos();
+    } catch (err) {
+      alert(`Error inesperado en sync: ${String(err)}`);
+      console.error('[SubirImagenes] Sync error:', err);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -325,15 +376,26 @@ export function SubirImagenes() {
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 800, color: FL.text, marginBottom: '4px' }}>Subir Imágenes de Productos</h1>
           <p style={{ fontSize: '14px', color: FL.textMuted }}>
-            Hasta 3 imágenes por producto — CF-00001_1.png, CF-00001_2.png, CF-00001_3.png
+            Imágenes en Storage → CanaanFarma/CF-XXXXX.png · Se sincronizan automáticamente
           </p>
         </div>
-        <button
-          onClick={fetchProductos}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: `1.5px solid ${FL.border}`, background: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: FL.textMuted, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-        >
-          <RefreshCw size={14} /> Actualizar
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={syncFromStorage}
+            disabled={syncing}
+            title="Sincroniza archivos subidos manualmente al bucket con la base de datos"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: `1.5px solid ${FL.primary}40`, background: FL.primary + '10', cursor: syncing ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, color: FL.primary, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+          >
+            {syncing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCcw size={14} />}
+            {syncing ? 'Sincronizando…' : 'Sync Storage'}
+          </button>
+          <button
+            onClick={fetchProductos}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: `1.5px solid ${FL.border}`, background: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: FL.textMuted, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+          >
+            <RefreshCw size={14} /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -395,7 +457,7 @@ export function SubirImagenes() {
               const hasFoto = urls.length > 0 || p.imagen_cargada;
               const state = uploadStates[p.id] || 'idle';
               const canAddMore = urls.length < 3;
-              const thumbUrl = `https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos/${p.id}_1.png`;
+              const thumbUrl = urls[0] ?? `${STORAGE_BASE}/${EMPRESA}/${p.id}.png`;
 
               return (
                 <div
@@ -417,28 +479,19 @@ export function SubirImagenes() {
                     : <XCircle size={20} color={FL.danger} style={{ flexShrink: 0 }} />
                   }
 
-                  {/* Thumbnail */}
+                  {/* Thumbnail — siempre intenta cargar, onError oculta si 404 */}
                   <div style={{
                     width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0,
                     border: `1.5px solid ${hasFoto ? FL.primary + '40' : FL.border}`,
                     background: FL.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden',
                   }}>
-                    {hasFoto ? (
-                      <img
-                        src={thumbUrl}
-                        alt={p.nombre}
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <svg viewBox="0 0 80 40" width={28} height={14} fill="none" opacity={0.2}>
-                        <rect x="1" y="1" width="78" height="38" rx="19" stroke="#4AABDB" strokeWidth="2" />
-                        <line x1="40" y1="1" x2="40" y2="39" stroke="#4AABDB" strokeWidth="1.5" />
-                        <rect x="1" y="1" width="39" height="38" rx="19" fill="#4AABDB" />
-                        <rect x="40" y="1" width="39" height="38" rx="19" fill="#7ECBA1" />
-                      </svg>
-                    )}
+                    <img
+                      src={thumbUrl}
+                      alt={p.nombre}
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
                   </div>
 
                   {/* Info */}

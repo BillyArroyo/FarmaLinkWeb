@@ -5,6 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Primera letra mayúscula, el resto minúscula. "ALKHOFAR" → "Alkhofar" */
+export function capitalizar(str: string | null | undefined): string {
+  if (!str) return ''
+  const s = str.trim()
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+}
+
 export function fmt(amount: number): string {
   return new Intl.NumberFormat('es-PE', {
     style: 'currency',

@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Printer, Loader2 } from 'lucide-react';
-import { FL } from '../../app/data/farmalink';
 import { supabase } from '../../lib/supabase';
+import {
+  TEAL, BLUE, PURPLE, NAVY, GRAD, FONT, LAB_COLORS, labColor, labSlug,
+} from '../../lib/catalogo-utils';
+import { ProductoCatalogoCard } from '../../components/catalogo/ProductoCatalogoCard';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ProductoImprimir {
@@ -15,28 +18,14 @@ interface ProductoImprimir {
 }
 
 type Modo = 'horizontal' | 'vertical';
+type CatalogoTipo = 'por-lab' | 'unificado' | 'hospital';
 
-// ── Design tokens ──────────────────────────────────────────────────────────
-const C = {
-  blue:    '#2D3E9F',
-  cyan:    '#2BC8E8',
-  teal:    '#16C5A3',
-  green:   '#1BC7A6',
-  purple:  '#6E5BFF',
-  bg:      '#F8FAFC',
-  grad:    'linear-gradient(135deg, #2BC8E8 0%, #16C5A3 50%, #2D3E9F 100%)',
-  badge:   'linear-gradient(180deg, #28D0C0 0%, #1EA5D8 100%)',
-  navy:    '#1A2535',
-} as const;
-
-const FONT = "'Poppins', sans-serif";
-
+// ── Page config ────────────────────────────────────────────────────────────
 const CFG = {
-  vertical:   { perPage: 9, cols: 3, orient: 'portrait',  pageW: '210mm', pageH: '297mm' },
-  horizontal: { perPage: 4, cols: 4, orient: 'landscape', pageW: '297mm', pageH: '210mm' },
+  vertical:   { perPage: 9, cols: 3, rows: 3, orient: 'portrait',  pageW: '210mm', pageH: '297mm' },
+  horizontal: { perPage: 4, cols: 2, rows: 2, orient: 'landscape', pageW: '297mm', pageH: '210mm' },
 } as const;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -60,295 +49,186 @@ function buildPages(productos: ProductoImprimir[], perPage: number) {
   return { pages, total: n };
 }
 
-// ── SVG Icons ──────────────────────────────────────────────────────────────
-function BoxSvg({ size = 12 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 14 14" width={size} height={size} fill="none" style={{ flexShrink: 0 }}>
-      <rect x="1" y="5" width="12" height="8" rx="1.5" stroke="#9CA3AF" strokeWidth="1.2" />
-      <path d="M1 6.5h12M5 1.5h4l1 3H4L5 1.5z" stroke="#9CA3AF" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
+function buildPagesUnified(productos: ProductoImprimir[], perPage: number) {
+  const pages: Array<{ items: ProductoImprimir[]; pageNum: number; startIdx: number }> = [];
+  let n = 0;
+  for (const items of chunk(productos, perPage)) {
+    pages.push({ items, pageNum: ++n, startIdx: (n - 1) * perPage });
+  }
+  return { pages, total: n };
 }
 
-function PhoneSvg() {
+// WhatsApp icon
+function WhatsAppIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-      <path d="M5.5 3.5h3.5l2 5-2.5 1.5a11 11 0 005 5l1.5-2.5 5 2v3.5c-9 1-16-6-14.5-14.5z"
-        stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function WhatsAppSvg() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="white">
       <path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.38 5.08L2 22l5.05-1.32A9.93 9.93 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm4.59 13.17c-.21.56-1.04 1.07-1.71 1.2-.45.09-1.03.17-3-.62-2.53-1-4.16-3.6-4.29-3.77-.12-.17-1.03-1.37-1.03-2.61 0-1.25.66-1.87.9-2.13.23-.26.5-.32.67-.32H8l.52 1.25-.81 2.02s.66 1.25 2.22 2.37c1 .72 2.02 1.07 2.02 1.07l1.65-.7 1.25.52-.01.12c-.06.21-.31.66-.56.91z" />
     </svg>
   );
 }
 
-// ── Product type detection ─────────────────────────────────────────────────
-type ProductType = 'tableta' | 'capsula' | 'jarabe' | 'ampolla' | 'crema' | 'inhalador';
+// ═══════════════════════════════════════════════════════════════════════════
+// TAB 1 — POR LABORATORIO
+// ═══════════════════════════════════════════════════════════════════════════
 
-function detectTipo(nombre: string, presentacion: string | null): ProductType {
-  const txt = (nombre + ' ' + (presentacion ?? '')).toLowerCase();
-  if (/inhalad|aerosol|inhaler/.test(txt)) return 'inhalador';
-  if (/ampollas?|inyect|vial|\bim\b|\biv\b|parenteral/.test(txt)) return 'ampolla';
-  if (/crema|gel|ungüento|pomada|loción|bálsamo/.test(txt)) return 'crema';
-  if (/jarabe|susp|suspensión|frasco|gotas|sol\./.test(txt)) return 'jarabe';
-  if (/cápsulas?|\bcap\b/.test(txt)) return 'capsula';
-  return 'tableta';
-}
-
-function ProductPlaceholder({ nombre, presentacion, size }: { nombre: string; presentacion: string | null; size: number }) {
-  const tipo = detectTipo(nombre, presentacion);
-  const s = size;
-  if (tipo === 'tableta') {
-    return (
-      <svg viewBox="0 0 64 28" width={s} height={Math.round(s * 0.44)} fill="none">
-        <ellipse cx="32" cy="14" rx="30" ry="12" fill={C.cyan} fillOpacity={0.2} stroke={C.teal} strokeWidth="1.5"/>
-        <path d="M2 14 A30 12 0 0 1 62 14" fill={C.teal} fillOpacity={0.2}/>
-        <line x1="2" y1="14" x2="62" y2="14" stroke={C.teal} strokeWidth="1.2" strokeDasharray="5 3"/>
-      </svg>
-    );
-  }
-  if (tipo === 'capsula') {
-    return (
-      <svg viewBox="0 0 80 32" width={s} height={Math.round(s * 0.4)} fill="none">
-        <rect x="1" y="1" width="78" height="30" rx="15" fill="none" stroke={C.teal} strokeWidth="1.5"/>
-        <line x1="40" y1="1" x2="40" y2="31" stroke={C.teal} strokeWidth="1.2"/>
-        <rect x="1" y="1" width="39" height="30" rx="15" fill={C.teal} fillOpacity={0.3}/>
-        <rect x="40" y="1" width="39" height="30" rx="15" fill={C.cyan} fillOpacity={0.2}/>
-      </svg>
-    );
-  }
-  if (tipo === 'jarabe') {
-    return (
-      <svg viewBox="0 0 36 52" width={Math.round(s * 0.69)} height={s} fill="none">
-        <rect x="13" y="1" width="10" height="7" rx="2" fill={C.teal} fillOpacity={0.5}/>
-        <path d="M9 8 L27 8 L30 14 L30 46 Q30 51 25 51 L11 51 Q6 51 6 46 L6 14 Z" fill={C.cyan} fillOpacity={0.18} stroke={C.teal} strokeWidth="1.5"/>
-        <rect x="7" y="30" width="22" height="16" rx="3" fill={C.teal} fillOpacity={0.2}/>
-        <line x1="13" y1="20" x2="23" y2="20" stroke={C.teal} strokeWidth="1" strokeDasharray="3 2"/>
-        <line x1="13" y1="24" x2="23" y2="24" stroke={C.teal} strokeWidth="1" strokeDasharray="3 2"/>
-      </svg>
-    );
-  }
-  if (tipo === 'ampolla') {
-    return (
-      <svg viewBox="0 0 64 20" width={s} height={Math.round(s * 0.31)} fill="none">
-        <line x1="1" y1="10" x2="10" y2="10" stroke={C.teal} strokeWidth="1.5"/>
-        <rect x="10" y="3" width="42" height="14" rx="4" fill={C.cyan} fillOpacity={0.2} stroke={C.teal} strokeWidth="1.5"/>
-        <rect x="52" y="1" width="5" height="18" rx="2" fill={C.teal} fillOpacity={0.45}/>
-        <rect x="12" y="5" width="20" height="10" rx="3" fill={C.teal} fillOpacity={0.22}/>
-      </svg>
-    );
-  }
-  if (tipo === 'crema') {
-    return (
-      <svg viewBox="0 0 72 24" width={s} height={Math.round(s * 0.33)} fill="none">
-        <rect x="1" y="6" width="11" height="12" rx="3" fill={C.teal} fillOpacity={0.5}/>
-        <path d="M12 3 L62 3 Q69 3 69 12 Q69 21 62 21 L12 21 Z" fill={C.cyan} fillOpacity={0.2} stroke={C.teal} strokeWidth="1.5"/>
-        <path d="M62 3 L67 3 Q69 5 69 12 Q69 19 67 21 L62 21 Z" fill={C.teal} fillOpacity={0.35}/>
-      </svg>
-    );
-  }
-  // inhalador
+// SVG ilustración 3D pills + shield (esquina derecha del hero)
+function LabIllustration({ size = 130 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 26 48" width={Math.round(s * 0.54)} height={s} fill="none">
-      <rect x="7" y="1" width="12" height="28" rx="5" fill={C.cyan} fillOpacity={0.2} stroke={C.teal} strokeWidth="1.5"/>
-      <rect x="9" y="0" width="8" height="4" rx="2" fill={C.teal} fillOpacity={0.5}/>
-      <path d="M4 29 Q2 32 2 36 L2 43 Q2 47 7 47 L19 47 Q24 47 24 43 L24 36 Q24 32 22 29 L4 29 Z" fill={C.teal} fillOpacity={0.25} stroke={C.teal} strokeWidth="1.5"/>
-      <rect x="10" y="32" width="6" height="10" rx="2" fill={C.teal} fillOpacity={0.4}/>
+    <svg viewBox="0 0 200 160" width={size} height={size * 0.8} style={{ display: 'block' }}>
+      <defs>
+        <radialGradient id="podium" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#E0F2FE" />
+          <stop offset="100%" stopColor="#BAE6FD" stopOpacity="0.5" />
+        </radialGradient>
+        <linearGradient id="capsuleTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#14B8A6" />
+          <stop offset="100%" stopColor="#0D9488" />
+        </linearGradient>
+        <linearGradient id="capsuleWhite" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#E5E7EB" />
+        </linearGradient>
+        <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#67E8F9" />
+          <stop offset="100%" stopColor="#0891B2" />
+        </linearGradient>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" />
+        </filter>
+      </defs>
+
+      {/* Podium base */}
+      <ellipse cx="100" cy="135" rx="75" ry="12" fill="url(#podium)" />
+      <ellipse cx="100" cy="130" rx="65" ry="10" fill="#ffffff" opacity="0.8" />
+
+      {/* Shadow blob */}
+      <ellipse cx="100" cy="128" rx="55" ry="6" fill="#0D9488" opacity="0.12" filter="url(#softShadow)" />
+
+      {/* Big capsule (back) */}
+      <g transform="translate(60 50) rotate(-20 35 20)">
+        <rect x="0" y="0" width="35" height="40" rx="20" fill="url(#capsuleTeal)" />
+        <rect x="35" y="0" width="35" height="40" rx="20" fill="url(#capsuleWhite)" />
+        <rect x="33" y="2" width="4" height="36" fill="#0D9488" opacity="0.3" />
+        <ellipse cx="15" cy="10" rx="6" ry="3" fill="#ffffff" opacity="0.35" />
+      </g>
+
+      {/* Small tablet (front) */}
+      <g transform="translate(115 88)">
+        <ellipse cx="20" cy="8" rx="20" ry="7" fill="#ffffff" stroke="#CBD5E1" strokeWidth="0.5" />
+        <ellipse cx="20" cy="6" rx="18" ry="5" fill="#F8FAFC" />
+        <line x1="6" y1="6" x2="34" y2="6" stroke="#CBD5E1" strokeWidth="0.8" />
+      </g>
+
+      {/* Shield with cross */}
+      <g transform="translate(140 35)">
+        <path d="M 20 0 L 38 6 L 38 24 Q 38 36 20 42 Q 2 36 2 24 L 2 6 Z" fill="url(#shieldGrad)" />
+        <path d="M 20 0 L 38 6 L 38 24 Q 38 36 20 42 Q 2 36 2 24 L 2 6 Z" fill="none" stroke="#ffffff" strokeWidth="1.5" opacity="0.5" />
+        <rect x="17" y="14" width="6" height="18" rx="1" fill="#ffffff" />
+        <rect x="11" y="20" width="18" height="6" rx="1" fill="#ffffff" />
+      </g>
     </svg>
   );
 }
 
-// ── Product Card ───────────────────────────────────────────────────────────
-function ProductCard({ p, num, modo }: { p: ProductoImprimir; num: number; modo: Modo }) {
-  const [imgError, setImgError] = useState(false);
-  const imgUrl = `https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos/${p.id}_1.png`;
-  const isH = modo === 'horizontal';
-  const imgH = isH ? 120 : 85;
+function LabHeroSection({ lab, isH }: { lab: string; isH: boolean }) {
+  const [logoOk, setLogoOk] = useState(true);
+  const lc = labColor(lab);
 
   return (
     <div style={{
-      borderRadius: '28px',
       background: '#ffffff',
-      boxShadow: '0 8px 30px rgba(0,0,0,0.05)',
-      display: 'flex',
-      flexDirection: 'column',
+      borderRadius: isH ? '22px' : '16px',
+      padding: isH ? '18px 24px' : '12px 16px',
+      display: 'flex', alignItems: 'center', gap: isH ? '20px' : '12px',
+      flexShrink: 0,
       overflow: 'hidden',
       position: 'relative',
-      height: '100%',
-      boxSizing: 'border-box',
-      border: '1px solid rgba(43,200,232,0.12)',
+      boxShadow: '0 4px 20px rgba(13,148,136,0.08)',
+      border: '1px solid #F1F5F9',
+      minHeight: isH ? '110px' : '78px',
     }}>
-      {/* ── Number badge ── */}
+      {/* Pill icon (left) */}
       <div style={{
-        position: 'absolute', top: '10px', left: '10px',
-        minWidth: '28px', height: '28px',
-        background: C.badge,
-        borderRadius: '12px',
+        width: isH ? '64px' : '46px', height: isH ? '64px' : '46px',
+        background: `linear-gradient(135deg, ${TEAL}10 0%, ${BLUE}12 100%)`,
+        borderRadius: isH ? '16px' : '12px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 2, padding: '0 7px',
-        boxShadow: '0 4px 10px rgba(30,165,216,0.35)',
+        flexShrink: 0,
+        border: `1.5px solid ${TEAL}20`,
       }}>
-        <span style={{ color: '#fff', fontSize: '11px', fontWeight: 700, lineHeight: 1, fontFamily: FONT }}>
-          {String(num).padStart(2, '0')}
-        </span>
+        <svg viewBox="0 0 24 24" width={isH ? 30 : 22} height={isH ? 30 : 22} fill="none">
+          <rect x="2" y="9" width="12" height="6" rx="3" fill={TEAL} opacity="0.9" transform="rotate(-45 8 12)" />
+          <rect x="10" y="9" width="12" height="6" rx="3" fill="#E0F7FA" stroke={TEAL} strokeWidth="0.8" transform="rotate(-45 16 12)" />
+        </svg>
       </div>
 
-      {/* ── Image area — FIXED HEIGHT ── */}
-      <div style={{
-        height: `${imgH}px`,
-        flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '10px 8px',
-        background: imgError ? `linear-gradient(135deg, rgba(43,200,232,0.08) 0%, rgba(22,197,163,0.12) 100%)` : 'transparent',
-      }}>
-        {!imgError ? (
+      {/* Vertical divider */}
+      <div style={{ width: '1.5px', alignSelf: 'stretch', background: `linear-gradient(180deg, transparent 0%, ${TEAL}30 50%, transparent 100%)`, flexShrink: 0 }} />
+
+      {/* Lab logo + subtitle */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {logoOk ? (
           <img
-            src={imgUrl}
-            alt={p.nombre}
-            onError={() => setImgError(true)}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+            src={`/logos/${labSlug(lab)}.png`} alt={lab}
+            onError={() => setLogoOk(false)}
+            style={{ height: isH ? '52px' : '36px', maxWidth: '100%', objectFit: 'contain', display: 'block', marginBottom: '4px' }}
           />
         ) : (
-          <ProductPlaceholder nombre={p.nombre} presentacion={p.presentacion} size={isH ? 72 : 52} />
+          <p style={{ fontSize: isH ? '26px' : '18px', fontWeight: 800, color: NAVY, lineHeight: 1, fontFamily: FONT, marginBottom: '4px' }}>
+            {lab}
+          </p>
         )}
+        <p style={{
+          fontSize: isH ? '11px' : '8px', color: '#94A3B8',
+          fontWeight: 600, letterSpacing: isH ? '4px' : '2.5px',
+          fontFamily: FONT, textTransform: 'uppercase',
+        }}>
+          Laboratorios
+        </p>
       </div>
 
-      {/* ── Info — fills remaining height with price pinned to bottom ── */}
-      <div style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: isH ? '0 16px 14px' : '0 11px 10px',
-        minHeight: 0,
-      }}>
-        {/* Name — max 2 lines */}
-        <p style={{
-          fontSize: isH ? '13px' : '10px',
-          fontWeight: 700,
-          color: C.blue,
-          lineHeight: 1.3,
-          marginBottom: '3px',
-          fontFamily: FONT,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          flexShrink: 0,
-        }}>
-          {p.nombre}
-        </p>
-
-        {/* Concentration — max 1 line */}
-        <p style={{
-          fontSize: isH ? '11px' : '9px',
-          fontWeight: 600,
-          color: C.teal,
-          lineHeight: 1.2,
-          flexShrink: 0,
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          fontFamily: FONT,
-          minHeight: isH ? '14px' : '11px',
-          marginBottom: '4px',
-        }}>
-          {p.concentracion ?? ''}
-        </p>
-
-        <div style={{ borderTop: '1.5px dashed rgba(43,200,232,0.35)', flexShrink: 0 }} />
-
-        {/* Presentation — max 1 line */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, overflow: 'hidden', padding: '4px 0' }}>
-          <BoxSvg size={isH ? 11 : 9} />
-          <span style={{
-            fontSize: isH ? '10px' : '8.5px',
-            color: '#9CA3AF',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            fontFamily: FONT,
-          }}>
-            {p.presentacion ?? '—'}
-          </span>
-        </div>
-
-        <div style={{ borderTop: '1.5px dashed rgba(43,200,232,0.35)', flexShrink: 0 }} />
-
-        {/* Price — always pinned to bottom */}
-        <div style={{ marginTop: 'auto', paddingTop: '5px', flexShrink: 0 }}>
-          {p.precio_contado != null ? (
-            <p style={{
-              fontSize: isH ? '24px' : '18px',
-              fontWeight: 700,
-              color: C.green,
-              lineHeight: 1,
-              fontFamily: FONT,
-            }}>
-              S/ {p.precio_contado.toFixed(2)}
-            </p>
-          ) : (
-            <p style={{ fontSize: '9px', color: '#D1D5DB', fontFamily: FONT }}>Sin precio</p>
-          )}
-        </div>
+      {/* 3D illustration (right) */}
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <LabIllustration size={isH ? 150 : 100} />
       </div>
     </div>
   );
 }
 
-// ── Page Header ────────────────────────────────────────────────────────────
 function PageHeader({ pageNum }: { pageNum: number }) {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      flexShrink: 0,
-      paddingBottom: '8px',
-    }}>
-      {/* Left: Logo + Brand */}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '2px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ background: 'white', borderRadius: '8px', padding: '4px 8px', flexShrink: 0 }}>
-          <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: '40px', width: 'auto', objectFit: 'contain', display: 'block' }} />
-        </div>
+        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ maxHeight: '46px', maxWidth: '46px', objectFit: 'contain' }} />
         <div>
-          <p style={{ fontSize: '14px', fontWeight: 700, color: C.blue, lineHeight: 1.1, letterSpacing: '0.3px', fontFamily: FONT }}>
-            CANAÁN FARMA
-          </p>
-          <p style={{ fontSize: '7px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '1.5px', marginTop: '2px', fontFamily: FONT }}>
-            DISTRIBUIDOR IMPORTADOR
-          </p>
+          <p style={{ fontSize: '15px', fontWeight: 800, color: NAVY, lineHeight: 1.1, letterSpacing: '0.8px', fontFamily: FONT }}>CANAÁN FARMA</p>
+          <p style={{ fontSize: '7.5px', fontWeight: 600, color: '#94A3B8', letterSpacing: '2px', marginTop: '3px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
         </div>
       </div>
 
-      {/* Center: Title */}
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', marginBottom: '3px' }}>
-          <div style={{ width: '24px', height: '2px', background: C.grad, borderRadius: '1px' }} />
-          <p style={{ fontSize: '12px', fontWeight: 700, color: C.blue, letterSpacing: '0.5px', fontFamily: FONT }}>
-            CATÁLOGO DE BENEFICIOS
-          </p>
-          <div style={{ width: '24px', height: '2px', background: C.grad, borderRadius: '1px' }} />
-        </div>
-        <p style={{ fontSize: '9px', fontWeight: 600, color: C.teal, letterSpacing: '0.5px', fontFamily: FONT }}>
-          EDICIÓN 2026
+      {/* Center title */}
+      <div style={{ textAlign: 'center', flex: 1, padding: '0 16px' }}>
+        <p style={{ fontSize: '15px', fontWeight: 800, color: NAVY, letterSpacing: '1.5px', fontFamily: FONT, marginBottom: '4px' }}>
+          CATÁLOGO DE BENEFICIOS
         </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+          <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: TEAL }} />
+          <p style={{ fontSize: '10px', fontWeight: 700, color: TEAL, letterSpacing: '3px', fontFamily: FONT }}>EDICIÓN 2026</p>
+          <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: TEAL }} />
+        </div>
       </div>
 
-      {/* Right: Page badge */}
+      {/* Page badge */}
       <div style={{
-        width: '46px', height: '46px',
-        background: C.grad,
+        width: '52px', height: '52px',
+        background: GRAD,
         borderRadius: '14px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: `0 6px 18px ${TEAL}45`,
         flexShrink: 0,
-        boxShadow: '0 4px 14px rgba(43,200,232,0.30)',
+        position: 'relative',
       }}>
-        <span style={{ color: '#fff', fontSize: '18px', fontWeight: 700, lineHeight: 1, fontFamily: FONT }}>
+        <span style={{ color: '#fff', fontSize: '22px', fontWeight: 800, fontFamily: FONT, lineHeight: 1 }}>
           {String(pageNum).padStart(2, '0')}
         </span>
       </div>
@@ -356,156 +236,374 @@ function PageHeader({ pageNum }: { pageNum: number }) {
   );
 }
 
-// ── Lab Section ────────────────────────────────────────────────────────────
-function LabSection({ lab }: { lab: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, padding: '4px 0 6px' }}>
-      {/* Gradient accent line left */}
-      <div style={{ width: '4px', height: '44px', background: C.grad, borderRadius: '4px', flexShrink: 0 }} />
-
-      {/* Lab name */}
-      <div>
-        <p style={{ fontSize: '22px', fontWeight: 700, color: C.blue, lineHeight: 1, letterSpacing: '0.2px', fontFamily: FONT }}>
-          {lab}
-        </p>
-        <p style={{ fontSize: '9px', color: C.teal, fontWeight: 600, letterSpacing: '1.2px', marginTop: '2px', fontFamily: FONT }}>
-          LABORATORIOS
-        </p>
-      </div>
-
-      {/* Fading gradient line */}
-      <div style={{ flex: 1, height: '2px', background: `linear-gradient(to right, rgba(43,200,232,0.4), transparent)` }} />
-    </div>
-  );
-}
-
-// ── Footer ─────────────────────────────────────────────────────────────────
-function PageFooter() {
+// Footer minimalista — WA + texto izq | teléfono + WA der
+function PageFooter({ pageNum, total }: { pageNum: number; total: number }) {
   return (
     <div style={{
-      background: C.navy,
-      borderRadius: '16px',
-      padding: '10px 20px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      borderTop: `1.5px solid #E2E8F0`,
+      paddingTop: '12px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       flexShrink: 0,
+      gap: '12px',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Left — soporte */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{
-          width: '34px', height: '34px',
-          background: 'rgba(255,255,255,0.10)',
+          width: '38px', height: '38px',
+          background: `linear-gradient(135deg, ${TEAL} 0%, ${BLUE} 100%)`,
           borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
+          boxShadow: `0 3px 10px ${TEAL}40`,
         }}>
-          <PhoneSvg />
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <path d="M3 18v-6a9 9 0 0118 0v6M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round" />
+          </svg>
         </div>
         <div>
-          <p style={{ color: '#fff', fontSize: '10px', fontWeight: 600, lineHeight: 1.3, fontFamily: FONT }}>
-            ¿Necesitas más información?
-          </p>
-          <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', lineHeight: 1.3, fontFamily: FONT }}>
-            Comunícate con nosotros
-          </p>
+          <p style={{ color: NAVY, fontSize: '11px', fontWeight: 800, lineHeight: 1.3, fontFamily: FONT }}>¿Necesitas más información?</p>
+          <p style={{ color: '#94A3B8', fontSize: '8.5px', lineHeight: 1.3, fontFamily: FONT, marginTop: '1px' }}>Comunícate con nosotros</p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Center — pagination subtle */}
+      <p style={{ fontSize: '7.5px', color: '#CBD5E1', fontFamily: FONT, textAlign: 'center', letterSpacing: '0.5px' }}>
+        {String(pageNum).padStart(2, '0')} / {String(total).padStart(2, '0')}
+      </p>
+
+      {/* Right — phone + WA */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ textAlign: 'right' }}>
+          <p style={{ color: '#94A3B8', fontSize: '8.5px', fontFamily: FONT, fontWeight: 600 }}>Línea de atención</p>
+          <p style={{ color: TEAL, fontSize: '17px', fontWeight: 800, letterSpacing: '1px', fontFamily: FONT, lineHeight: 1.1 }}>999 999 999</p>
+        </div>
         <div style={{
-          width: '34px', height: '34px',
+          width: '38px', height: '38px',
           background: '#25D366',
           borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
+          boxShadow: '0 3px 10px rgba(37,211,102,0.35)',
         }}>
-          <WhatsAppSvg />
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', lineHeight: 1.3, fontFamily: FONT }}>
-            Línea de atención
-          </p>
-          <p style={{ color: '#fff', fontSize: '15px', fontWeight: 700, lineHeight: 1.3, letterSpacing: '0.5px', fontFamily: FONT }}>
-            999 999 999
-          </p>
+          <WhatsAppIcon size={20} />
         </div>
       </div>
     </div>
   );
 }
 
-// ── Catalog Page ───────────────────────────────────────────────────────────
-function CatalogoPage({ lab, items, pageNum, total, modo }: {
-  lab: string; items: ProductoImprimir[]; pageNum: number; total: number; modo: Modo;
-}) {
+function CatalogoPage({ lab, items, pageNum, total, modo }: { lab: string; items: ProductoImprimir[]; pageNum: number; total: number; modo: Modo }) {
   const cfg = CFG[modo];
   const isH = modo === 'horizontal';
-  const bgImg = modo === 'vertical' ? '/fondoverticalcatalogos.png' : '/fondohorizontalcatalogos.png';
-
   return (
-    <div
-      className="catalogo-page"
-      style={{
-        width: cfg.pageW,
-        height: cfg.pageH,
-        backgroundImage: `url('${bgImg}')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        padding: '12mm',
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: isH ? '10px' : '8px',
-        fontFamily: FONT,
-        margin: '0 auto',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
-      <PageHeader pageNum={pageNum} />
-      <LabSection lab={lab} />
+    <div className="catalogo-page" style={{
+      width: cfg.pageW, height: cfg.pageH,
+      padding: '10mm 11mm',
+      boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column', gap: isH ? '10px' : '8px',
+      fontFamily: FONT,
+      margin: '0 auto',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
+      overflow: 'hidden',
+      position: 'relative',
+      background: '#ffffff',
+    }}>
+      {/* Decorative blobs */}
+      <div style={{
+        position: 'absolute', top: '-40px', left: '-60px',
+        width: '220px', height: '220px',
+        background: `radial-gradient(circle, ${TEAL}18 0%, transparent 65%)`,
+        pointerEvents: 'none', zIndex: 0,
+      }} />
+      <div style={{
+        position: 'absolute', bottom: '-50px', right: '-60px',
+        width: '240px', height: '240px',
+        background: `radial-gradient(circle, ${PURPLE}12 0%, transparent 60%)`,
+        pointerEvents: 'none', zIndex: 0,
+      }} />
+      <div style={{
+        position: 'absolute', top: '50%', left: '-30px',
+        width: '120px', height: '120px',
+        background: `radial-gradient(circle, ${BLUE}10 0%, transparent 60%)`,
+        pointerEvents: 'none', zIndex: 0,
+      }} />
 
-      {/* ── Product grid ── */}
+      {/* Hexagon pattern top-right */}
+      <svg style={{ position: 'absolute', top: '70px', right: '0px', opacity: 0.06, pointerEvents: 'none', zIndex: 0 }} width="180" height="180" viewBox="0 0 180 180">
+        <defs>
+          <pattern id="hex" x="0" y="0" width="30" height="34" patternUnits="userSpaceOnUse">
+            <polygon points="15,2 28,10 28,26 15,34 2,26 2,10" fill="none" stroke={TEAL} strokeWidth="1" />
+          </pattern>
+        </defs>
+        <rect width="180" height="180" fill="url(#hex)" />
+      </svg>
+
+      {/* Content over blobs */}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: isH ? '10px' : '8px', height: '100%' }}>
+        <PageHeader pageNum={pageNum} />
+        <LabHeroSection lab={lab} isH={isH} />
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
+          gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
+          gap: isH ? '14px' : '9px',
+          flex: 1, minHeight: 0,
+        }}>
+          {items.map((p, i) => (
+            <ProductoCatalogoCard key={p.id} producto={p} numero={i + 1} modo={modo} />
+          ))}
+        </div>
+        <PageFooter pageNum={pageNum} total={total} />
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAB 2 — UNIFICADO
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Header — matches Image 1
+function UnifiedPageHeader({ pageNum, startIdx, endIdx }: { pageNum: number; startIdx: number; endIdx: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '4px' }}>
+      {/* Logo + brand */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ maxHeight: '42px', maxWidth: '42px', objectFit: 'contain' }} />
+        <div>
+          <p style={{ fontSize: '13px', fontWeight: 800, color: NAVY, lineHeight: 1.1, letterSpacing: '0.5px', fontFamily: FONT }}>CANAÁN FARMA</p>
+          <p style={{ fontSize: '7px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '1.6px', marginTop: '2px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
+        </div>
+      </div>
+
+      {/* Center */}
+      <div style={{ textAlign: 'center', flex: 1, padding: '0 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', marginBottom: '4px' }}>
+          <div style={{ width: '24px', height: '2px', background: TEAL, borderRadius: '2px' }} />
+          <div style={{ width: '24px', height: '2px', background: BLUE, borderRadius: '2px' }} />
+          <p style={{ fontSize: '14px', fontWeight: 800, color: NAVY, letterSpacing: '0.5px', fontFamily: FONT }}>CATÁLOGO UNIFICADO</p>
+          <div style={{ width: '24px', height: '2px', background: BLUE, borderRadius: '2px' }} />
+          <div style={{ width: '24px', height: '2px', background: TEAL, borderRadius: '2px' }} />
+        </div>
+        <p style={{ fontSize: '8px', fontWeight: 600, color: '#9CA3AF', fontFamily: FONT, letterSpacing: '0.3px' }}>
+          Productos – Laboratorio – Soluciones
+        </p>
+      </div>
+
+      {/* Page badge */}
+      <div style={{
+        width: '48px', height: '48px',
+        background: GRAD,
+        borderRadius: '14px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        boxShadow: `0 4px 14px ${TEAL}50`,
+        flexShrink: 0,
+      }}>
+        <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '7px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG.</span>
+        <span style={{ color: '#fff', fontSize: '18px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
+      </div>
+    </div>
+  );
+}
+
+// Footer — matches Image 1 (3 benefit icons + phone + WhatsApp + lab dots)
+function UnifiedPageFooter({ pageNum, total }: { pageNum: number; total: number }) {
+  return (
+    <div style={{
+      background: `linear-gradient(135deg, ${TEAL} 0%, ${BLUE} 50%, ${PURPLE} 100%)`,
+      borderRadius: '14px',
+      padding: '10px 18px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      gap: '8px',
+      flexShrink: 0,
+    }}>
+      {/* Benefit icons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: isH_global ? '14px' : '10px' }}>
+        {[
+          { icon: <svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M12 2L3 6v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-9-4z" stroke="white" strokeWidth="1.5" /><path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>, label: 'CALIDAD', sub: 'Garantizada' },
+          { icon: <svg viewBox="0 0 24 24" width="13" height="13" fill="none"><rect x="1" y="10" width="15" height="8" rx="1" stroke="white" strokeWidth="1.5" /><path d="M16 14h4l2-2v4h-6" stroke="white" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="5" cy="18" r="1.5" stroke="white" strokeWidth="1.5" /><circle cx="17" cy="18" r="1.5" stroke="white" strokeWidth="1.5" /></svg>, label: 'ENTREGA RÁPIDA', sub: 'A todo el país' },
+          { icon: <svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="white" strokeWidth="1.5" /></svg>, label: 'SOPORTE', sub: 'Profesional' },
+        ].map(({ icon, label, sub }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '26px', height: '26px', background: 'rgba(255,255,255,0.15)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {icon}
+            </div>
+            <div>
+              <p style={{ color: '#fff', fontSize: '7.5px', fontWeight: 800, fontFamily: FONT, lineHeight: 1 }}>{label}</p>
+              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '6.5px', fontFamily: FONT, lineHeight: 1.3 }}>{sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Center — page + labs indicator */}
+      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginBottom: '3px' }}>
+          {LAB_COLORS.slice(0, 5).map(c => (
+            <div key={c} style={{ width: '7px', height: '7px', borderRadius: '50%', background: c, opacity: 0.8 }} />
+          ))}
+        </div>
+        <p style={{ fontSize: '6px', color: 'rgba(255,255,255,0.4)', fontFamily: FONT, lineHeight: 1.5 }}>
+          Todos los laboratorios<br />
+          Pág. {String(pageNum).padStart(2, '0')} / {String(total).padStart(2, '0')}
+        </p>
+      </div>
+
+      {/* Phone + WA */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+        <p style={{ color: '#fff', fontSize: '15px', fontWeight: 700, fontFamily: FONT, letterSpacing: '0.5px' }}>999 999 999</p>
+        <div style={{ width: '32px', height: '32px', background: '#25D366', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
+          <WhatsAppIcon size={17} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Hack for isH inside footer component
+let isH_global = false;
+
+function UnifiedPage({ items, pageNum, total, startIdx, modo }: { items: ProductoImprimir[]; pageNum: number; total: number; startIdx: number; modo: Modo }) {
+  const cfg = CFG[modo];
+  const isH = modo === 'horizontal';
+  isH_global = isH;
+  const endIdx = Math.min(startIdx + items.length, startIdx + cfg.perPage);
+  return (
+    <div className="catalogo-page" style={{
+      width: cfg.pageW, height: cfg.pageH,
+      padding: '8mm 10mm',
+      boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '6px',
+      fontFamily: FONT, margin: '0 auto',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
+      overflow: 'hidden',
+      background: `
+        radial-gradient(circle at 95% 5%, ${TEAL}10 0%, transparent 30%),
+        radial-gradient(circle at 5% 95%, ${PURPLE}08 0%, transparent 28%),
+        url('${isH ? '/fondohorizontalcatalogos.png' : '/fondoverticalcatalogos.png'}') center / cover no-repeat,
+        #ffffff
+      `,
+    }}>
+      <UnifiedPageHeader pageNum={pageNum} startIdx={startIdx} endIdx={endIdx} />
       <div style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
-        gridTemplateRows: isH ? '1fr' : 'repeat(3, 1fr)',
-        gap: isH ? '10px' : '7px',
-        flex: 1,
-        minHeight: 0,
-        alignItems: 'stretch',
+        gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
+        gap: isH ? '12px' : '7px',
+        flex: 1, minHeight: 0,
       }}>
         {items.map((p, i) => (
-          <ProductCard key={p.id} p={p} num={i + 1} modo={modo} />
+          <ProductoCatalogoCard key={p.id} producto={p} numero={startIdx + i + 1} modo={modo} />
         ))}
-        {items.length < cfg.perPage &&
-          Array.from({ length: cfg.perPage - items.length }).map((_, i) => (
-            <div key={`filler-${i}`} style={{ visibility: 'hidden' }} />
-          ))
-        }
       </div>
-
-      {/* ── Footer ── */}
-      {!isH ? (
-        <PageFooter />
-      ) : (
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          borderTop: `1px solid rgba(43,200,232,0.15)`, paddingTop: '4px', flexShrink: 0,
-        }}>
-          <p style={{ fontSize: '7px', color: '#9CA3AF', letterSpacing: '0.3px', fontFamily: FONT }}>
-            Precios sujetos a cambio sin previo aviso · Vigente hasta agotar stock
-          </p>
-          <p style={{ fontSize: '7px', color: '#9CA3AF', fontFamily: FONT }}>Pág. {pageNum} / {total}</p>
-        </div>
-      )}
+      <UnifiedPageFooter pageNum={pageNum} total={total} />
     </div>
   );
 }
 
-// ── Main export ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// TAB 3 — HOSPITAL (clinical design)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function HospitalPageHeader({ pageNum, startIdx, endIdx }: { pageNum: number; startIdx: number; endIdx: number }) {
+  return (
+    <div style={{ background: GRAD, borderRadius: '13px', padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ width: '38px', height: '38px', background: 'rgba(255,255,255,0.12)', borderRadius: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div>
+          <p style={{ fontSize: '14px', fontWeight: 800, color: '#fff', lineHeight: 1.1, letterSpacing: '0.5px', fontFamily: FONT }}>CATÁLOGO CLÍNICO HOSPITALARIO</p>
+          <p style={{ fontSize: '7.5px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', letterSpacing: '1.8px', marginTop: '2px', fontFamily: FONT }}>CANAÁN FARMA — EDICIÓN 2026</p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <p style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: FONT }}>Productos {startIdx + 1}–{endIdx}</p>
+        <div style={{ width: '44px', height: '44px', background: 'rgba(255,255,255,0.15)', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.25)', flexShrink: 0 }}>
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '6.5px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG</span>
+          <span style={{ color: '#fff', fontSize: '16px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HospitalPageFooter({ pageNum, total }: { pageNum: number; total: number }) {
+  return (
+    <div style={{ background: `${TEAL}10`, border: `1px solid ${TEAL}35`, borderRadius: '11px', padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '26px', height: '26px', background: GRAD, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" /></svg>
+        </div>
+        <div>
+          <p style={{ fontSize: '7.5px', fontWeight: 700, color: NAVY, fontFamily: FONT }}>USO EXCLUSIVO CLÍNICO HOSPITALARIO</p>
+          <p style={{ fontSize: '6px', color: '#64748B', fontFamily: FONT }}>Precios B2B · Requiere habilitación sanitaria</p>
+        </div>
+      </div>
+      <p style={{ fontSize: '6.5px', color: '#94A3B8', fontFamily: FONT, textAlign: 'center' }}>
+        Pág. {String(pageNum).padStart(2, '0')} de {String(total).padStart(2, '0')} · Vigente 2026
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div>
+          <p style={{ fontSize: '7px', color: '#64748B', fontFamily: FONT, textAlign: 'right' }}>Central de pedidos</p>
+          <p style={{ fontSize: '13px', fontWeight: 800, color: NAVY, fontFamily: FONT, letterSpacing: '0.5px' }}>999 999 999</p>
+        </div>
+        <div style={{ width: '28px', height: '28px', background: '#25D366', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <WhatsAppIcon size={14} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HospitalPage({ items, pageNum, total, startIdx, modo }: { items: ProductoImprimir[]; pageNum: number; total: number; startIdx: number; modo: Modo }) {
+  const cfg = CFG[modo];
+  const isH = modo === 'horizontal';
+  const endIdx = Math.min(startIdx + items.length, startIdx + cfg.perPage);
+  return (
+    <div className="catalogo-page" style={{
+      width: cfg.pageW, height: cfg.pageH,
+      padding: '8mm 10mm',
+      boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '6px',
+      fontFamily: FONT, margin: '0 auto',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
+      overflow: 'hidden',
+      background: '#F0FDFA',
+      position: 'relative',
+    }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, width: '100px', height: '100px', background: `radial-gradient(circle at 100% 0%, ${BLUE}15 0%, transparent 70%)`, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100px', height: '100px', background: `radial-gradient(circle at 0% 100%, ${TEAL}12 0%, transparent 70%)`, pointerEvents: 'none' }} />
+      <HospitalPageHeader pageNum={pageNum} startIdx={startIdx} endIdx={endIdx} />
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
+        gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
+        gap: isH ? '12px' : '7px',
+        flex: 1, minHeight: 0,
+      }}>
+        {items.map((p, i) => (
+          <ProductoCatalogoCard key={p.id} producto={p} numero={startIdx + i + 1} modo={modo} variant="hospital" />
+        ))}
+      </div>
+      <HospitalPageFooter pageNum={pageNum} total={total} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Main export
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TABS: Array<{ id: CatalogoTipo; label: string; desc: string; icon: string }> = [
+  { id: 'por-lab',    label: 'Por Laboratorio', desc: '9 vert / 4 horiz · Agrupado', icon: '🏭' },
+  { id: 'unificado', label: 'Unificado',        desc: '9/pág · Todos los labs',     icon: '🗂️' },
+  { id: 'hospital',  label: 'Hospital',          desc: '9/pág · Diseño clínico',     icon: '🏥' },
+];
+
 export function CatalogoImprimir() {
+  const [tipo, setTipo] = useState<CatalogoTipo>('por-lab');
   const [modo, setModo] = useState<Modo>('vertical');
   const [productos, setProductos] = useState<ProductoImprimir[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,157 +616,129 @@ export function CatalogoImprimir() {
       .order('laboratorio')
       .order('nombre')
       .then(({ data, error }) => {
-        if (error) console.error('Error cargando catálogo:', error.message);
+        if (error) console.error('CatalogoImprimir:', error.message);
         if (data) setProductos(data as ProductoImprimir[]);
         setLoading(false);
       });
   }, []);
 
+  const currentOrient = CFG[modo].orient;
+
   useEffect(() => {
-    const id = 'catalogo-page-css';
+    const id = 'catalogo-print-css';
     document.getElementById(id)?.remove();
     const style = document.createElement('style');
     style.id = id;
     style.textContent = `
       @media print {
-        /* ── Ocultar todo salvo el catálogo (técnica visibility) ── */
+        *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body, body * { visibility: hidden !important; }
-        .catalogo-print-root,
-        .catalogo-print-root * { visibility: visible !important; }
-
-        .catalogo-print-root {
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 100% !important;
-          background: white !important;
-        }
-
-        /* Ocultar barra de controles dentro del root */
-        .no-print { display: none !important; visibility: hidden !important; }
-
+        .catalogo-print-root, .catalogo-print-root * { visibility: visible !important; }
+        .catalogo-print-root { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; }
+        .no-print { display: none !important; }
         body, html { margin: 0 !important; padding: 0 !important; }
-
-        @page { size: A4 ${CFG[modo].orient}; margin: 0; }
-
-        .print-wrapper {
-          display: block !important;
-          padding: 0 !important;
-          background: transparent !important;
-        }
-
+        @page { size: A4 ${currentOrient}; margin: 0; }
+        .print-wrapper { display: block !important; padding: 0 !important; }
         .catalogo-page {
-          display: flex !important;
-          flex-direction: column !important;
-          box-shadow: none !important;
-          width: 100% !important;
-          height: 100vh !important;
-          padding: 10mm !important;
-          margin: 0 !important;
+          display: flex !important; flex-direction: column !important;
+          width: 100% !important; height: 100vh !important;
+          padding: 8mm 10mm !important; margin: 0 !important;
           box-sizing: border-box !important;
-          page-break-after: always;
-          break-after: page;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
+          page-break-after: always; break-after: page;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
-
-        .catalogo-page:last-child {
-          page-break-after: avoid;
-          break-after: avoid;
-        }
+        .catalogo-page:last-child { page-break-after: avoid; break-after: avoid; }
       }
     `;
     document.head.appendChild(style);
     return () => { document.getElementById(id)?.remove(); };
-  }, [modo]);
+  }, [currentOrient]);
 
-  const { pages, total } = buildPages(productos, CFG[modo].perPage);
-  const canPrint = !loading && total > 0;
+  const labPages = tipo === 'por-lab' ? buildPages(productos, CFG[modo].perPage) : { pages: [], total: 0 };
+  const uniPages = tipo !== 'por-lab' ? buildPagesUnified(productos, CFG[modo].perPage) : { pages: [], total: 0 };
+  const totalPages = tipo === 'por-lab' ? labPages.total : uniPages.total;
+  const canPrint = !loading && totalPages > 0;
 
   const handlePrint = () => {
     const content = document.getElementById('catalogo-content');
     if (!content) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(`<!DOCTYPE html>
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Poppins', sans-serif; background: white; }
-    @page { size: A4 ${modo === 'vertical' ? 'portrait' : 'landscape'}; margin: 0; }
-    .catalogo-page {
-      width: 100vw; height: 100vh;
-      page-break-after: always; break-after: page;
-      -webkit-print-color-adjust: exact; print-color-adjust: exact;
-      overflow: hidden; position: relative;
-    }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: white; }
+    @page { size: A4 ${currentOrient}; margin: 0; }
+    .catalogo-page { width: 100vw; height: 100vh; page-break-after: always; break-after: page; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow: hidden; position: relative; }
     .catalogo-page:last-child { page-break-after: avoid; break-after: avoid; }
   </style>
 </head>
 <body>${content.innerHTML}</body>
 </html>`);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => { printWindow.print(); }, 1500);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 1800);
   };
 
   return (
     <div className="catalogo-print-root" style={{ fontFamily: FONT, minHeight: '100%', background: '#EEF4F6' }}>
-
-      {/* ── Google Fonts preload ── */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-      {/* ── Controls bar ── */}
-      <div
-        className="no-print"
-        style={{
-          position: 'sticky', top: 0, zIndex: 100,
-          background: 'rgba(255,255,255,0.97)',
-          backdropFilter: 'blur(10px)',
-          borderBottom: `1px solid ${FL.border}`,
-          padding: '14px 28px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: '16px', flexWrap: 'wrap',
-        }}
-      >
+      {/* Controls bar */}
+      <div className="no-print" style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: 'rgba(255,255,255,0.97)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: `1px solid #E8F0F4`,
+        padding: '14px 28px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
+        boxShadow: '0 2px 20px rgba(13,148,136,0.06)',
+      }}>
         <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: C.blue, marginBottom: '2px', fontFamily: FONT }}>
-            Catálogo Imprimible
-          </h1>
-          <p style={{ fontSize: '13px', color: FL.textMuted, fontFamily: FONT }}>
-            {loading
-              ? 'Leyendo productos de Supabase…'
-              : `${productos.length} productos · ${total} páginas · ordenados por laboratorio`
-            }
+          <h1 style={{ fontSize: '20px', fontWeight: 800, color: NAVY, marginBottom: '2px', fontFamily: FONT }}>Catálogo Imprimible</h1>
+          <p style={{ fontSize: '13px', color: '#6B7280', fontFamily: FONT }}>
+            {loading ? 'Cargando productos…' : `${productos.length} productos · ${totalPages} páginas`}
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {/* Mode selector */}
-          <div style={{
-            display: 'flex', background: C.bg,
-            borderRadius: '12px', padding: '4px',
-            border: `1px solid rgba(43,200,232,0.2)`,
-          }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Type tabs */}
+          <div style={{ display: 'flex', background: '#F0F8FF', borderRadius: '14px', padding: '4px', border: `1px solid ${TEAL}30` }}>
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setTipo(tab.id)} style={{
+                padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                background: tipo === tab.id ? GRAD : 'transparent',
+                color: tipo === tab.id ? '#fff' : '#6B7280',
+                fontWeight: 700, fontSize: '13px', fontFamily: FONT,
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                boxShadow: tipo === tab.id ? `0 2px 10px ${TEAL}40` : 'none',
+              }}>
+                <span style={{ fontSize: '14px' }}>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', background: '#F0F8FF', borderRadius: '12px', padding: '4px', border: `1px solid ${TEAL}30` }}>
             {(['vertical', 'horizontal'] as Modo[]).map(m => (
-              <button
-                key={m}
-                onClick={() => setModo(m)}
-                style={{
-                  padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                  background: modo === m ? C.grad : 'transparent',
-                  color: modo === m ? '#fff' : FL.textMuted,
-                  fontWeight: 600, fontSize: '13px',
-                  fontFamily: FONT,
-                  transition: 'all 0.15s', whiteSpace: 'nowrap',
-                }}
-              >
-                {m === 'vertical' ? '9 / pág — Vertical' : '4 / pág — Horizontal'}
+              <button key={m} onClick={() => setModo(m)} style={{
+                padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                background: modo === m ? GRAD : 'transparent',
+                color: modo === m ? '#fff' : '#6B7280',
+                fontWeight: 600, fontSize: '12px', fontFamily: FONT,
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+                boxShadow: modo === m ? `0 2px 8px ${TEAL}40` : 'none',
+              }}>
+                {m === 'vertical' ? '9/pág Vertical' : '4/pág Horizontal'}
               </button>
             ))}
           </div>
@@ -681,13 +751,12 @@ export function CatalogoImprimir() {
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '10px 22px', borderRadius: '12px', border: 'none',
               cursor: canPrint ? 'pointer' : 'not-allowed',
-              background: canPrint ? C.grad : '#E5E7EB',
-              color: canPrint ? '#fff' : FL.textMuted,
-              fontWeight: 700, fontSize: '14px',
-              fontFamily: FONT,
+              background: canPrint ? GRAD : '#E5E7EB',
+              color: canPrint ? '#fff' : '#9CA3AF',
+              fontWeight: 700, fontSize: '14px', fontFamily: FONT,
               whiteSpace: 'nowrap',
-              boxShadow: canPrint ? '0 4px 14px rgba(43,200,232,0.35)' : 'none',
-              transition: 'all 0.15s',
+              boxShadow: canPrint ? `0 4px 16px ${TEAL}45` : 'none',
+              transition: 'all 0.2s',
             }}
           >
             <Printer size={16} />
@@ -696,53 +765,37 @@ export function CatalogoImprimir() {
         </div>
       </div>
 
-      {/* ── Pages preview ── */}
-      <div
-        id="catalogo-content"
-        className="print-wrapper"
-        style={{
-          padding: '32px 28px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '32px',
-        }}
-      >
+      {/* Pages */}
+      <div id="catalogo-content" className="print-wrapper" style={{ padding: '32px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '32px' }}>
         {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '400px', justifyContent: 'center', gap: '14px' }}>
-            <Loader2 size={36} color={C.cyan} style={{ animation: 'spin 1s linear infinite' }} />
-            <p style={{ fontSize: '16px', fontWeight: 700, color: C.blue, fontFamily: FONT }}>Cargando catálogo…</p>
-            <p style={{ fontSize: '13px', color: FL.textMuted, fontFamily: FONT }}>Leyendo productos de Supabase</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '400px', justifyContent: 'center', gap: '16px' }}>
+            <Loader2 size={38} color={TEAL} style={{ animation: 'spin 1s linear infinite' }} />
+            <p style={{ fontSize: '16px', fontWeight: 700, color: NAVY, fontFamily: FONT }}>Cargando catálogo…</p>
           </div>
         )}
 
-        {!loading && pages.length === 0 && (
+        {!loading && totalPages === 0 && (
           <div style={{ textAlign: 'center', padding: '80px 24px' }}>
-            <div style={{
-              width: '72px', height: '72px',
-              background: C.bg, borderRadius: '20px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 20px',
-              border: `1px solid rgba(43,200,232,0.2)`,
-            }}>
-              <Printer size={32} color={C.teal} />
+            <div style={{ width: '72px', height: '72px', background: '#F0F8FF', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', border: `1px solid ${TEAL}33` }}>
+              <Printer size={32} color={TEAL} />
             </div>
-            <p style={{ fontSize: '18px', fontWeight: 700, color: C.blue, fontFamily: FONT }}>Sin productos para imprimir</p>
-            <p style={{ fontSize: '14px', color: FL.textMuted, marginTop: '8px', lineHeight: 1.6, fontFamily: FONT }}>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: NAVY, fontFamily: FONT }}>Sin productos para imprimir</p>
+            <p style={{ fontSize: '14px', color: '#6B7280', marginTop: '8px', lineHeight: 1.6, fontFamily: FONT }}>
               Importa productos desde Excel primero,<br />o verifica que hay registros activos en Supabase.
             </p>
           </div>
         )}
 
-        {!loading && pages.map(page => (
-          <CatalogoPage
-            key={page.pageNum}
-            lab={page.lab}
-            items={page.items}
-            pageNum={page.pageNum}
-            total={total}
-            modo={modo}
-          />
+        {tipo === 'por-lab' && !loading && labPages.pages.map(page => (
+          <CatalogoPage key={page.pageNum} lab={page.lab} items={page.items} pageNum={page.pageNum} total={labPages.total} modo={modo} />
+        ))}
+
+        {tipo === 'unificado' && !loading && uniPages.pages.map(page => (
+          <UnifiedPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />
+        ))}
+
+        {tipo === 'hospital' && !loading && uniPages.pages.map(page => (
+          <HospitalPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />
         ))}
       </div>
 

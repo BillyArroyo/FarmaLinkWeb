@@ -1,17 +1,39 @@
-import { ShoppingCart, DollarSign, Users, FileText, Camera, Package, TrendingUp, ChevronRight } from 'lucide-react';
-import { FL } from '../../data/farmalink';
+import { useMemo } from 'react';
+import { ShoppingCart, DollarSign, Users, FileText, Package } from 'lucide-react';
+import { FL, fmt } from '../../data/farmalink';
+import { useAuthStore } from '../../../store/authStore';
+import { usePedidos } from '../../../modules/pedidos/hooks/usePedidos';
 
 interface Props {
   onPedido: () => void; onCobro: () => void; onCatalogo: () => void; onPedidos: () => void;
 }
 
-const ESTADO_COLORS: Record<string, { bg: string; color: string }> = {
-  'Al día': { bg: '#DCFCE7', color: '#16A34A' },
-  'Por vencer': { bg: '#FEF9C3', color: '#CA8A04' },
-  'Vencido': { bg: '#FEE2E2', color: '#DC2626' },
-};
-
 export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Props) {
+  const { user } = useAuthStore();
+
+  const hoyISO = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+
+  const { pedidos, loading: pedidosLoading } = usePedidos(undefined, hoyISO);
+
+  const stats = useMemo(() => {
+    const activos = pedidos.filter(p => p.estado !== 'cancelado');
+    const cobrado = activos.reduce((sum: number, p: { total: number }) => sum + (p.total ?? 0), 0);
+    const clientesUnicos = new Set(activos.map((p: { cliente_id: string }) => p.cliente_id)).size;
+    return { pedidos: activos.length, cobrado, clientes: clientesUnicos };
+  }, [pedidos]);
+
+  const fechaHoy = new Date().toLocaleDateString('es-PE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  const initiales = user?.nombre
+    ? user.nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    : '??';
+
   const acciones = [
     { label: 'Nuevo Pedido', icon: ShoppingCart, color: '#4AABDB', bg: '#EBF7FD', action: onPedido },
     { label: 'Registrar Cobro', icon: DollarSign, color: '#7ECBA1', bg: '#EDFAF3', action: onCobro },
@@ -19,20 +41,19 @@ export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Pro
     { label: 'Mis Pedidos', icon: FileText, color: '#F87171', bg: '#FEF2F2', action: onPedidos },
   ];
 
-  const visitas: never[] = [];
-
   return (
     <div style={{ backgroundColor: FL.bg, fontFamily: "'Plus Jakarta Sans', sans-serif", color: FL.text }} className="min-h-full overflow-y-auto pb-6">
       {/* Header */}
       <div style={{ background: FL.gradient, borderRadius: '0 0 28px 28px' }} className="px-5 pt-12 pb-6">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px' }}>Miércoles, 14 Mayo 2026</p>
-            <p style={{ color: '#fff', fontSize: '20px', fontWeight: 800 }}>Buenos días, Carlos 👋</p>
-            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px' }}>Zona Norte · Huancayo</p>
+            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', textTransform: 'capitalize' }}>{fechaHoy}</p>
+            <p style={{ color: '#fff', fontSize: '20px', fontWeight: 800 }}>
+              {user ? `Buenos días, ${user.nombre.split(' ')[0]}` : 'Buenos días'}
+            </p>
           </div>
           <div style={{ width: '48px', height: '48px', background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,0.4)' }}>
-            <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>CQ</p>
+            <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{initiales}</p>
           </div>
         </div>
       </div>
@@ -46,28 +67,18 @@ export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Pro
           </div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Pedidos', value: '8', icon: ShoppingCart, color: FL.primary },
-              { label: 'Cobrado', value: 'S/. 4,280', icon: DollarSign, color: FL.secondary },
-              { label: 'Clientes', value: '12', icon: Users, color: '#A78BFA' },
+              { label: 'Pedidos', value: pedidosLoading ? '—' : String(stats.pedidos), icon: ShoppingCart, color: FL.primary },
+              { label: 'Cobrado', value: pedidosLoading ? '—' : fmt(stats.cobrado), icon: DollarSign, color: FL.secondary },
+              { label: 'Clientes', value: pedidosLoading ? '—' : String(stats.clientes), icon: Users, color: '#A78BFA' },
             ].map(stat => (
               <div key={stat.label} style={{ background: FL.bg, borderRadius: '14px', padding: '12px 8px', textAlign: 'center' }}>
                 <div style={{ width: '32px', height: '32px', background: stat.color + '20', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 6px' }}>
                   <stat.icon size={16} color={stat.color} />
                 </div>
-                <p style={{ fontSize: '16px', fontWeight: 800, color: FL.text }}>{stat.value}</p>
+                <p style={{ fontSize: stat.label === 'Cobrado' ? '13px' : '16px', fontWeight: 800, color: FL.text }}>{stat.value}</p>
                 <p style={{ fontSize: '10px', color: FL.textMuted }}>{stat.label}</p>
               </div>
             ))}
-          </div>
-          {/* Progress */}
-          <div className="mt-4">
-            <div className="flex justify-between mb-1">
-              <p style={{ fontSize: '11px', color: FL.textMuted }}>Meta del día: S/. 6,000</p>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: FL.primary }}>71%</p>
-            </div>
-            <div style={{ background: FL.bg, borderRadius: '10px', height: '8px', overflow: 'hidden' }}>
-              <div style={{ width: '71%', height: '100%', background: FL.gradient, borderRadius: '10px' }} />
-            </div>
           </div>
         </div>
       </div>
@@ -93,31 +104,19 @@ export function InicioVendedor({ onPedido, onCobro, onCatalogo, onPedidos }: Pro
       <div className="px-4 mt-5">
         <div className="flex justify-between items-center mb-3">
           <p style={{ fontSize: '15px', fontWeight: 700 }}>Mis clientes hoy</p>
-          <button style={{ color: FL.primary, fontSize: '13px', fontWeight: 600 }}>Ver todos</button>
         </div>
-        {visitas.length === 0 ? (
-          <div style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '24px 16px', textAlign: 'center' }}>
-            <p style={{ fontSize: '13px', color: FL.textMuted }}>Sin clientes asignados aún — tabla no implementada</p>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Performance */}
-      <div className="mx-4 mt-4">
-        <div style={{ background: FL.gradient, borderRadius: FL.radius, padding: '16px' }}>
-          <div className="flex items-center gap-3">
-            <TrendingUp size={24} color="#fff" />
-            <div>
-              <p style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>Tu desempeño esta semana</p>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px' }}>+18% vs semana anterior 🔥</p>
-            </div>
-          </div>
+        <div style={{ background: '#fff', borderRadius: FL.radius, boxShadow: FL.shadow, padding: '24px 16px', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: FL.textMuted }}>
+            {pedidosLoading ? 'Cargando...' : stats.clientes === 0
+              ? 'Sin visitas registradas hoy'
+              : `${stats.clientes} cliente${stats.clientes !== 1 ? 's' : ''} con pedidos hoy`}
+          </p>
         </div>
       </div>
 
       {/* Bottom nav */}
       <div style={{ background: '#fff', borderTop: `1px solid ${FL.border}`, position: 'sticky', bottom: 0 }} className="flex justify-around py-3 mt-5">
-        {[{ icon: '🏠', label: 'Inicio', active: true }, { icon: '📋', label: 'Pedidos' }, { icon: '👥', label: 'Clientes' }, { icon: '👤', label: 'Perfil' }].map(item => (
+        {[{ icon: '🏠', label: 'Inicio', active: true }, { icon: '📋', label: 'Pedidos', active: false }, { icon: '👥', label: 'Clientes', active: false }, { icon: '👤', label: 'Perfil', active: false }].map(item => (
           <button key={item.label} className="flex flex-col items-center gap-1">
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
             <span style={{ fontSize: '10px', fontWeight: 600, color: item.active ? FL.primary : FL.textMuted }}>{item.label}</span>
