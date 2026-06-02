@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Printer, Loader2 } from 'lucide-react';
+import { Printer, Loader2, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { supabase } from '../../lib/supabase';
 import {
-  TEAL, BLUE, PURPLE, NAVY, GRAD, FONT, LAB_COLORS, labColor, labSlug,
+  TEAL, BLUE, PURPLE, NAVY, GRAD, FONT, labLogoPath,
 } from '../../lib/catalogo-utils';
 import { ProductoCatalogoCard } from '../../components/catalogo/ProductoCatalogoCard';
+
+const CF_PRIMARY = '#4a63d9';
+const CF_SUB     = '#1fa5a5';
+
+const CF_PRICE_G = 'linear-gradient(135deg, #31c1b0 0%, #1fa5a5 45%, #4a63d9 100%)';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ProductoImprimir {
@@ -15,6 +22,7 @@ interface ProductoImprimir {
   laboratorio: string;
   precio_contado: number | null;
   imagenes_urls: string[] | null;
+  fecha_vencimiento: string | null;
 }
 
 type Modo = 'horizontal' | 'vertical';
@@ -23,7 +31,7 @@ type CatalogoTipo = 'por-lab' | 'unificado' | 'hospital';
 // ── Page config ────────────────────────────────────────────────────────────
 const CFG = {
   vertical:   { perPage: 9, cols: 3, rows: 3, orient: 'portrait',  pageW: '210mm', pageH: '297mm' },
-  horizontal: { perPage: 4, cols: 2, rows: 2, orient: 'landscape', pageW: '297mm', pageH: '210mm' },
+  horizontal: { perPage: 4, cols: 4, rows: 1, orient: 'landscape', pageW: '297mm', pageH: '210mm' },
 } as const;
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -71,164 +79,59 @@ function WhatsAppIcon({ size = 16 }: { size?: number }) {
 // TAB 1 — POR LABORATORIO
 // ═══════════════════════════════════════════════════════════════════════════
 
-// SVG ilustración 3D pills + shield (esquina derecha del hero)
-function LabIllustration({ size = 130 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 200 160" width={size} height={size * 0.8} style={{ display: 'block' }}>
-      <defs>
-        <radialGradient id="podium" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#E0F2FE" />
-          <stop offset="100%" stopColor="#BAE6FD" stopOpacity="0.5" />
-        </radialGradient>
-        <linearGradient id="capsuleTeal" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#14B8A6" />
-          <stop offset="100%" stopColor="#0D9488" />
-        </linearGradient>
-        <linearGradient id="capsuleWhite" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#E5E7EB" />
-        </linearGradient>
-        <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#67E8F9" />
-          <stop offset="100%" stopColor="#0891B2" />
-        </linearGradient>
-        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="3" />
-        </filter>
-      </defs>
-
-      {/* Podium base */}
-      <ellipse cx="100" cy="135" rx="75" ry="12" fill="url(#podium)" />
-      <ellipse cx="100" cy="130" rx="65" ry="10" fill="#ffffff" opacity="0.8" />
-
-      {/* Shadow blob */}
-      <ellipse cx="100" cy="128" rx="55" ry="6" fill="#0D9488" opacity="0.12" filter="url(#softShadow)" />
-
-      {/* Big capsule (back) */}
-      <g transform="translate(60 50) rotate(-20 35 20)">
-        <rect x="0" y="0" width="35" height="40" rx="20" fill="url(#capsuleTeal)" />
-        <rect x="35" y="0" width="35" height="40" rx="20" fill="url(#capsuleWhite)" />
-        <rect x="33" y="2" width="4" height="36" fill="#0D9488" opacity="0.3" />
-        <ellipse cx="15" cy="10" rx="6" ry="3" fill="#ffffff" opacity="0.35" />
-      </g>
-
-      {/* Small tablet (front) */}
-      <g transform="translate(115 88)">
-        <ellipse cx="20" cy="8" rx="20" ry="7" fill="#ffffff" stroke="#CBD5E1" strokeWidth="0.5" />
-        <ellipse cx="20" cy="6" rx="18" ry="5" fill="#F8FAFC" />
-        <line x1="6" y1="6" x2="34" y2="6" stroke="#CBD5E1" strokeWidth="0.8" />
-      </g>
-
-      {/* Shield with cross */}
-      <g transform="translate(140 35)">
-        <path d="M 20 0 L 38 6 L 38 24 Q 38 36 20 42 Q 2 36 2 24 L 2 6 Z" fill="url(#shieldGrad)" />
-        <path d="M 20 0 L 38 6 L 38 24 Q 38 36 20 42 Q 2 36 2 24 L 2 6 Z" fill="none" stroke="#ffffff" strokeWidth="1.5" opacity="0.5" />
-        <rect x="17" y="14" width="6" height="18" rx="1" fill="#ffffff" />
-        <rect x="11" y="20" width="18" height="6" rx="1" fill="#ffffff" />
-      </g>
-    </svg>
-  );
-}
-
 function LabHeroSection({ lab, isH }: { lab: string; isH: boolean }) {
   const [logoOk, setLogoOk] = useState(true);
-  const lc = labColor(lab);
 
   return (
     <div style={{
-      background: '#ffffff',
-      borderRadius: isH ? '22px' : '16px',
-      padding: isH ? '18px 24px' : '12px 16px',
-      display: 'flex', alignItems: 'center', gap: isH ? '20px' : '12px',
+      background: `#ffffff padding-box, ${CF_PRICE_G} border-box`,
+      borderRadius: isH ? '22px' : '14px',
+      padding: isH ? '18px 32px' : '7px 20px',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
       flexShrink: 0,
       overflow: 'hidden',
-      position: 'relative',
-      boxShadow: '0 4px 20px rgba(13,148,136,0.08)',
-      border: '1px solid #F1F5F9',
-      minHeight: isH ? '110px' : '78px',
+      boxShadow: '0 4px 20px rgba(13,148,136,0.10)',
+      border: '2px solid transparent',
+      minHeight: isH ? '110px' : '65px',
     }}>
-      {/* Pill icon (left) */}
-      <div style={{
-        width: isH ? '64px' : '46px', height: isH ? '64px' : '46px',
-        background: `linear-gradient(135deg, ${TEAL}10 0%, ${BLUE}12 100%)`,
-        borderRadius: isH ? '16px' : '12px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-        border: `1.5px solid ${TEAL}20`,
-      }}>
-        <svg viewBox="0 0 24 24" width={isH ? 30 : 22} height={isH ? 30 : 22} fill="none">
-          <rect x="2" y="9" width="12" height="6" rx="3" fill={TEAL} opacity="0.9" transform="rotate(-45 8 12)" />
-          <rect x="10" y="9" width="12" height="6" rx="3" fill="#E0F7FA" stroke={TEAL} strokeWidth="0.8" transform="rotate(-45 16 12)" />
-        </svg>
-      </div>
-
-      {/* Vertical divider */}
-      <div style={{ width: '1.5px', alignSelf: 'stretch', background: `linear-gradient(180deg, transparent 0%, ${TEAL}30 50%, transparent 100%)`, flexShrink: 0 }} />
-
-      {/* Lab logo + subtitle */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {logoOk ? (
-          <img
-            src={`/logos/${labSlug(lab)}.png`} alt={lab}
-            onError={() => setLogoOk(false)}
-            style={{ height: isH ? '52px' : '36px', maxWidth: '100%', objectFit: 'contain', display: 'block', marginBottom: '4px' }}
-          />
-        ) : (
-          <p style={{ fontSize: isH ? '26px' : '18px', fontWeight: 800, color: NAVY, lineHeight: 1, fontFamily: FONT, marginBottom: '4px' }}>
-            {lab}
-          </p>
-        )}
-        <p style={{
-          fontSize: isH ? '11px' : '8px', color: '#94A3B8',
-          fontWeight: 600, letterSpacing: isH ? '4px' : '2.5px',
-          fontFamily: FONT, textTransform: 'uppercase',
-        }}>
-          Laboratorios
+      {logoOk ? (
+        <img
+          src={labLogoPath(lab)} alt={lab}
+          onError={() => setLogoOk(false)}
+          style={{ height: isH ? '90px' : '52px', maxWidth: '90%', objectFit: 'contain', display: 'block' }}
+        />
+      ) : (
+        <p style={{ fontSize: isH ? '32px' : '24px', fontWeight: 800, color: NAVY, lineHeight: 1, fontFamily: FONT }}>
+          {lab}
         </p>
-      </div>
-
-      {/* 3D illustration (right) */}
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <LabIllustration size={isH ? 150 : 100} />
-      </div>
+      )}
     </div>
   );
 }
 
-function PageHeader({ pageNum }: { pageNum: number }) {
+function PageHeader({ pageNum }: { pageNum: number; isH?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '2px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ maxHeight: '46px', maxWidth: '46px', objectFit: 'contain' }} />
+      {/* Centro — Canaán Farma */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flex: 1 }}>
+        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: '50px', width: '50px', objectFit: 'contain' }} />
         <div>
-          <p style={{ fontSize: '15px', fontWeight: 800, color: NAVY, lineHeight: 1.1, letterSpacing: '0.8px', fontFamily: FONT }}>CANAÁN FARMA</p>
-          <p style={{ fontSize: '7.5px', fontWeight: 600, color: '#94A3B8', letterSpacing: '2px', marginTop: '3px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
+          <p style={{ fontSize: '22px', fontWeight: 800, lineHeight: 1, letterSpacing: '0.5px', fontFamily: FONT, background: CF_PRICE_G, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>CANAÁN FARMA</p>
+          <p style={{ fontSize: '8px', fontWeight: 600, color: '#94A3B8', letterSpacing: '2px', marginTop: '3px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
         </div>
       </div>
 
-      {/* Center title */}
-      <div style={{ textAlign: 'center', flex: 1, padding: '0 16px' }}>
-        <p style={{ fontSize: '15px', fontWeight: 800, color: NAVY, letterSpacing: '1.5px', fontFamily: FONT, marginBottom: '4px' }}>
-          CATÁLOGO DE BENEFICIOS
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-          <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: TEAL }} />
-          <p style={{ fontSize: '10px', fontWeight: 700, color: TEAL, letterSpacing: '3px', fontFamily: FONT }}>EDICIÓN 2026</p>
-          <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: TEAL }} />
-        </div>
-      </div>
-
-      {/* Page badge */}
+      {/* Badge número — gradiente */}
       <div style={{
         width: '52px', height: '52px',
-        background: GRAD,
+        background: CF_PRICE_G,
         borderRadius: '14px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 6px 18px ${TEAL}45`,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 6px 18px rgba(49,193,176,0.45)',
         flexShrink: 0,
-        position: 'relative',
       }}>
-        <span style={{ color: '#fff', fontSize: '22px', fontWeight: 800, fontFamily: FONT, lineHeight: 1 }}>
+        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '7px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG.</span>
+        <span style={{ color: '#fff', fontSize: '20px', fontWeight: 800, fontFamily: FONT, lineHeight: 1.1 }}>
           {String(pageNum).padStart(2, '0')}
         </span>
       </div>
@@ -240,8 +143,8 @@ function PageHeader({ pageNum }: { pageNum: number }) {
 function PageFooter({ pageNum, total }: { pageNum: number; total: number }) {
   return (
     <div style={{
-      borderTop: `1.5px solid #E2E8F0`,
-      paddingTop: '12px',
+      borderTop: `1.5px solid ${CF_PRIMARY}30`,
+      paddingTop: '10px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       flexShrink: 0,
       gap: '12px',
@@ -249,19 +152,20 @@ function PageFooter({ pageNum, total }: { pageNum: number; total: number }) {
       {/* Left — soporte */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{
-          width: '38px', height: '38px',
-          background: `linear-gradient(135deg, ${TEAL} 0%, ${BLUE} 100%)`,
+          width: '36px', height: '36px',
+          background: CF_PRIMARY,
           borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: `0 3px 10px ${TEAL}40`,
+          boxShadow: `0 3px 10px ${CF_PRIMARY}40`,
+          flexShrink: 0,
         }}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
             <path d="M3 18v-6a9 9 0 0118 0v6M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3v5zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3v5z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round" />
           </svg>
         </div>
         <div>
-          <p style={{ color: NAVY, fontSize: '11px', fontWeight: 800, lineHeight: 1.3, fontFamily: FONT }}>¿Necesitas más información?</p>
-          <p style={{ color: '#94A3B8', fontSize: '8.5px', lineHeight: 1.3, fontFamily: FONT, marginTop: '1px' }}>Comunícate con nosotros</p>
+          <p style={{ color: CF_PRIMARY, fontSize: '11px', fontWeight: 800, lineHeight: 1.3, fontFamily: FONT }}>¿Necesitas más información?</p>
+          <p style={{ color: '#94A3B8', fontSize: '8px', lineHeight: 1.3, fontFamily: FONT, marginTop: '1px' }}>Comunícate con nosotros</p>
         </div>
       </div>
 
@@ -273,18 +177,18 @@ function PageFooter({ pageNum, total }: { pageNum: number; total: number }) {
       {/* Right — phone + WA */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ textAlign: 'right' }}>
-          <p style={{ color: '#94A3B8', fontSize: '8.5px', fontFamily: FONT, fontWeight: 600 }}>Línea de atención</p>
-          <p style={{ color: TEAL, fontSize: '17px', fontWeight: 800, letterSpacing: '1px', fontFamily: FONT, lineHeight: 1.1 }}>999 999 999</p>
+          <p style={{ color: '#94A3B8', fontSize: '8px', fontFamily: FONT, fontWeight: 600 }}>Línea de atención</p>
+          <p style={{ color: CF_PRIMARY, fontSize: '17px', fontWeight: 800, letterSpacing: '1px', fontFamily: FONT, lineHeight: 1.1 }}>999 999 999</p>
         </div>
         <div style={{
-          width: '38px', height: '38px',
+          width: '36px', height: '36px',
           background: '#25D366',
           borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
           boxShadow: '0 3px 10px rgba(37,211,102,0.35)',
         }}>
-          <WhatsAppIcon size={20} />
+          <WhatsAppIcon size={19} />
         </div>
       </div>
     </div>
@@ -305,7 +209,12 @@ function CatalogoPage({ lab, items, pageNum, total, modo }: { lab: string; items
       boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
       overflow: 'hidden',
       position: 'relative',
-      background: '#ffffff',
+      background: `
+        radial-gradient(circle at 95% 5%, ${TEAL}10 0%, transparent 30%),
+        radial-gradient(circle at 5% 95%, ${PURPLE}08 0%, transparent 28%),
+        url('${isH ? '/fondohorizontalcatalogos1.png' : '/fondoverticalcatalogos.png'}') center / cover no-repeat,
+        #ffffff
+      `,
     }}>
       {/* Decorative blobs */}
       <div style={{
@@ -338,14 +247,14 @@ function CatalogoPage({ lab, items, pageNum, total, modo }: { lab: string; items
       </svg>
 
       {/* Content over blobs */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: isH ? '10px' : '8px', height: '100%' }}>
-        <PageHeader pageNum={pageNum} />
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: isH ? '10px' : '5px', height: '100%' }}>
+        <PageHeader pageNum={pageNum} isH={isH} />
         <LabHeroSection lab={lab} isH={isH} />
         <div style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
           gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
-          gap: isH ? '14px' : '9px',
+          gap: isH ? '14px' : '6px',
           flex: 1, minHeight: 0,
         }}>
           {items.map((p, i) => (
@@ -363,43 +272,29 @@ function CatalogoPage({ lab, items, pageNum, total, modo }: { lab: string; items
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Header — matches Image 1
-function UnifiedPageHeader({ pageNum, startIdx, endIdx }: { pageNum: number; startIdx: number; endIdx: number }) {
+function UnifiedPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '4px' }}>
-      {/* Logo + brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ maxHeight: '42px', maxWidth: '42px', objectFit: 'contain' }} />
+      {/* Centro — Canaán Farma */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', flex: 1 }}>
+        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: isH ? '120px' : '52px', width: isH ? '120px' : '52px', objectFit: 'contain' }} />
         <div>
-          <p style={{ fontSize: '13px', fontWeight: 800, color: NAVY, lineHeight: 1.1, letterSpacing: '0.5px', fontFamily: FONT }}>CANAÁN FARMA</p>
-          <p style={{ fontSize: '7px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '1.6px', marginTop: '2px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
+          <p style={{ fontSize: isH ? '52px' : '22px', fontWeight: 800, lineHeight: 1, letterSpacing: '0.5px', fontFamily: FONT, background: CF_PRICE_G, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>CANAÁN FARMA</p>
+          <p style={{ fontSize: isH ? '12px' : '8px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '2px', marginTop: '3px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
         </div>
       </div>
 
-      {/* Center */}
-      <div style={{ textAlign: 'center', flex: 1, padding: '0 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '24px', height: '2px', background: TEAL, borderRadius: '2px' }} />
-          <div style={{ width: '24px', height: '2px', background: BLUE, borderRadius: '2px' }} />
-          <p style={{ fontSize: '14px', fontWeight: 800, color: NAVY, letterSpacing: '0.5px', fontFamily: FONT }}>CATÁLOGO UNIFICADO</p>
-          <div style={{ width: '24px', height: '2px', background: BLUE, borderRadius: '2px' }} />
-          <div style={{ width: '24px', height: '2px', background: TEAL, borderRadius: '2px' }} />
-        </div>
-        <p style={{ fontSize: '8px', fontWeight: 600, color: '#9CA3AF', fontFamily: FONT, letterSpacing: '0.3px' }}>
-          Productos – Laboratorio – Soluciones
-        </p>
-      </div>
-
-      {/* Page badge */}
+      {/* Badge número — gradiente */}
       <div style={{
-        width: '48px', height: '48px',
-        background: GRAD,
+        width: isH ? '52px' : '44px', height: isH ? '52px' : '44px',
+        background: CF_PRICE_G,
         borderRadius: '14px',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 4px 14px ${TEAL}50`,
+        boxShadow: '0 6px 18px rgba(49,193,176,0.45)',
         flexShrink: 0,
       }}>
-        <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '7px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG.</span>
-        <span style={{ color: '#fff', fontSize: '18px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
+        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '7px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG.</span>
+        <span style={{ color: '#fff', fontSize: isH ? '20px' : '16px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
       </div>
     </div>
   );
@@ -409,7 +304,7 @@ function UnifiedPageHeader({ pageNum, startIdx, endIdx }: { pageNum: number; sta
 function UnifiedPageFooter({ pageNum, total }: { pageNum: number; total: number }) {
   return (
     <div style={{
-      background: `linear-gradient(135deg, ${TEAL} 0%, ${BLUE} 50%, ${PURPLE} 100%)`,
+      background: `linear-gradient(135deg, #31c1b0 0%, ${CF_SUB} 40%, ${CF_PRIMARY} 100%)`,
       borderRadius: '14px',
       padding: '10px 18px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -424,25 +319,25 @@ function UnifiedPageFooter({ pageNum, total }: { pageNum: number; total: number 
           { icon: <svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" /><circle cx="12" cy="7" r="4" stroke="white" strokeWidth="1.5" /></svg>, label: 'SOPORTE', sub: 'Profesional' },
         ].map(({ icon, label, sub }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{ width: '26px', height: '26px', background: 'rgba(255,255,255,0.15)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '26px', height: '26px', background: 'rgba(255,255,255,0.18)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {icon}
             </div>
             <div>
               <p style={{ color: '#fff', fontSize: '7.5px', fontWeight: 800, fontFamily: FONT, lineHeight: 1 }}>{label}</p>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '6.5px', fontFamily: FONT, lineHeight: 1.3 }}>{sub}</p>
+              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '6.5px', fontFamily: FONT, lineHeight: 1.3 }}>{sub}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Center — page + labs indicator */}
+      {/* Center — page indicator */}
       <div style={{ textAlign: 'center', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginBottom: '3px' }}>
-          {LAB_COLORS.slice(0, 5).map(c => (
-            <div key={c} style={{ width: '7px', height: '7px', borderRadius: '50%', background: c, opacity: 0.8 }} />
+        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '3px' }}>
+          {['#31c1b0', CF_SUB, CF_PRIMARY, '#7b97f0', '#a8bfff'].map(c => (
+            <div key={c} style={{ width: '7px', height: '7px', borderRadius: '50%', background: c, opacity: 0.85 }} />
           ))}
         </div>
-        <p style={{ fontSize: '6px', color: 'rgba(255,255,255,0.4)', fontFamily: FONT, lineHeight: 1.5 }}>
+        <p style={{ fontSize: '6px', color: 'rgba(255,255,255,0.45)', fontFamily: FONT, lineHeight: 1.5 }}>
           Todos los laboratorios<br />
           Pág. {String(pageNum).padStart(2, '0')} / {String(total).padStart(2, '0')}
         </p>
@@ -466,29 +361,28 @@ function UnifiedPage({ items, pageNum, total, startIdx, modo }: { items: Product
   const cfg = CFG[modo];
   const isH = modo === 'horizontal';
   isH_global = isH;
-  const endIdx = Math.min(startIdx + items.length, startIdx + cfg.perPage);
   return (
     <div className="catalogo-page" style={{
       width: cfg.pageW, height: cfg.pageH,
       padding: '8mm 10mm',
       boxSizing: 'border-box',
-      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '6px',
+      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '4px',
       fontFamily: FONT, margin: '0 auto',
       boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
       overflow: 'hidden',
       background: `
         radial-gradient(circle at 95% 5%, ${TEAL}10 0%, transparent 30%),
         radial-gradient(circle at 5% 95%, ${PURPLE}08 0%, transparent 28%),
-        url('${isH ? '/fondohorizontalcatalogos.png' : '/fondoverticalcatalogos.png'}') center / cover no-repeat,
+        url('${isH ? '/fondohorizontalcatalogos1.png' : '/fondoverticalcatalogos.png'}') center / cover no-repeat,
         #ffffff
       `,
     }}>
-      <UnifiedPageHeader pageNum={pageNum} startIdx={startIdx} endIdx={endIdx} />
+      <UnifiedPageHeader pageNum={pageNum} isH={isH} />
       <div style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
         gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
-        gap: isH ? '12px' : '7px',
+        gap: isH ? '12px' : '6px',
         flex: 1, minHeight: 0,
       }}>
         {items.map((p, i) => (
@@ -504,26 +398,29 @@ function UnifiedPage({ items, pageNum, total, startIdx, modo }: { items: Product
 // TAB 3 — HOSPITAL (clinical design)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function HospitalPageHeader({ pageNum, startIdx, endIdx }: { pageNum: number; startIdx: number; endIdx: number }) {
+function HospitalPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean }) {
   return (
-    <div style={{ background: GRAD, borderRadius: '13px', padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ width: '38px', height: '38px', background: 'rgba(255,255,255,0.12)', borderRadius: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-        </div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '2px' }}>
+      {/* Centro — Canaán Farma */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', flex: 1 }}>
+        <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: isH ? '120px' : '52px', width: isH ? '120px' : '52px', objectFit: 'contain' }} />
         <div>
-          <p style={{ fontSize: '14px', fontWeight: 800, color: '#fff', lineHeight: 1.1, letterSpacing: '0.5px', fontFamily: FONT }}>CATÁLOGO CLÍNICO HOSPITALARIO</p>
-          <p style={{ fontSize: '7.5px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', letterSpacing: '1.8px', marginTop: '2px', fontFamily: FONT }}>CANAÁN FARMA — EDICIÓN 2026</p>
+          <p style={{ fontSize: isH ? '52px' : '22px', fontWeight: 800, lineHeight: 1, letterSpacing: '0.5px', fontFamily: FONT, background: CF_PRICE_G, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>CANAÁN FARMA</p>
+          <p style={{ fontSize: isH ? '12px' : '8px', fontWeight: 600, color: '#94A3B8', letterSpacing: '2px', marginTop: '3px', fontFamily: FONT }}>DISTRIBUIDOR IMPORTADOR</p>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <p style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: FONT }}>Productos {startIdx + 1}–{endIdx}</p>
-        <div style={{ width: '44px', height: '44px', background: 'rgba(255,255,255,0.15)', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.25)', flexShrink: 0 }}>
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '6.5px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG</span>
-          <span style={{ color: '#fff', fontSize: '16px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
-        </div>
+
+      {/* Badge número — gradiente */}
+      <div style={{
+        width: isH ? '52px' : '44px', height: isH ? '52px' : '44px',
+        background: CF_PRICE_G,
+        borderRadius: '14px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 6px 18px rgba(49,193,176,0.45)',
+        flexShrink: 0,
+      }}>
+        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '7px', fontWeight: 600, fontFamily: FONT, lineHeight: 1 }}>PÁG.</span>
+        <span style={{ color: '#fff', fontSize: isH ? '20px' : '16px', fontWeight: 800, lineHeight: 1.1, fontFamily: FONT }}>{String(pageNum).padStart(2, '0')}</span>
       </div>
     </div>
   );
@@ -560,27 +457,31 @@ function HospitalPageFooter({ pageNum, total }: { pageNum: number; total: number
 function HospitalPage({ items, pageNum, total, startIdx, modo }: { items: ProductoImprimir[]; pageNum: number; total: number; startIdx: number; modo: Modo }) {
   const cfg = CFG[modo];
   const isH = modo === 'horizontal';
-  const endIdx = Math.min(startIdx + items.length, startIdx + cfg.perPage);
   return (
     <div className="catalogo-page" style={{
       width: cfg.pageW, height: cfg.pageH,
       padding: '8mm 10mm',
       boxSizing: 'border-box',
-      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '6px',
+      display: 'flex', flexDirection: 'column', gap: isH ? '8px' : '4px',
       fontFamily: FONT, margin: '0 auto',
       boxShadow: '0 8px 40px rgba(0,0,0,0.13)',
       overflow: 'hidden',
-      background: '#F0FDFA',
       position: 'relative',
+      background: `
+        radial-gradient(circle at 95% 5%, ${TEAL}10 0%, transparent 30%),
+        radial-gradient(circle at 5% 95%, ${PURPLE}08 0%, transparent 28%),
+        url('${isH ? '/fondohorizontalcatalogos1.png' : '/fondoverticalcatalogos.png'}') center / cover no-repeat,
+        #F0FDFA
+      `,
     }}>
       <div style={{ position: 'absolute', top: 0, right: 0, width: '100px', height: '100px', background: `radial-gradient(circle at 100% 0%, ${BLUE}15 0%, transparent 70%)`, pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100px', height: '100px', background: `radial-gradient(circle at 0% 100%, ${TEAL}12 0%, transparent 70%)`, pointerEvents: 'none' }} />
-      <HospitalPageHeader pageNum={pageNum} startIdx={startIdx} endIdx={endIdx} />
+      <HospitalPageHeader pageNum={pageNum} isH={isH} />
       <div style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${cfg.cols}, 1fr)`,
         gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
-        gap: isH ? '12px' : '7px',
+        gap: isH ? '12px' : '6px',
         flex: 1, minHeight: 0,
       }}>
         {items.map((p, i) => (
@@ -607,11 +508,13 @@ export function CatalogoImprimir() {
   const [modo, setModo] = useState<Modo>('vertical');
   const [productos, setProductos] = useState<ProductoImprimir[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number } | null>(null);
 
   useEffect(() => {
     supabase
       .from('productos')
-      .select('id, nombre, concentracion, presentacion, laboratorio, precio_contado, imagenes_urls')
+      .select('id, nombre, concentracion, presentacion, laboratorio, precio_contado, imagenes_urls, fecha_vencimiento')
       .eq('activo', true)
       .order('laboratorio')
       .order('nombre')
@@ -659,37 +562,302 @@ export function CatalogoImprimir() {
   const totalPages = tipo === 'por-lab' ? labPages.total : uniPages.total;
   const canPrint = !loading && totalPages > 0;
 
-  const handlePrint = () => {
+  const compressImgToDataURL = (src: string, scale = 0.5, quality = 0.55): Promise<string> =>
+    new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale);
+        c.height = Math.round(img.naturalHeight * scale);
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    });
+
+  const handlePrint = async () => {
     const content = document.getElementById('catalogo-content');
     if (!content) return;
+
     const win = window.open('', '_blank');
-    if (!win) return;
+    if (!win) {
+      alert(
+        'El navegador bloqueó la ventana emergente.\n' +
+        'Haz clic en el ícono de popup bloqueado en la barra de direcciones, permite el acceso e intenta de nuevo.'
+      );
+      return;
+    }
+
+    // Pre-comprimir el fondo activo: PNG ~1.4 MB → JPEG ~90 KB (15x reducción).
+    // Se inyecta UNA sola regla CSS con !important para que el browser lo embeba
+    // una vez en el PDF en vez de repetirlo por cada página.
+    const bgSrc = currentOrient === 'landscape'
+      ? '/fondohorizontalcatalogos1.png'
+      : '/fondoverticalcatalogos.png';
+    const bgDataUrl = await compressImgToDataURL(bgSrc);
+    const baseColor = tipo === 'hospital' ? '#F0FDFA' : '#ffffff';
+
+    // CSS de optimización para la ventana de impresión:
+    // - fondo comprimido (data URL) para no repetir el PNG original por página
+    // - sin box-shadow ni filter: Chrome rasteriza sombras extendiendo el área
+    //   del bitmap por página → PDF más pesado y más lento de generar
+    const printOptimizeCss = `
+      .catalogo-page {
+        background:
+          radial-gradient(circle at 95% 5%, ${TEAL}10 0%, transparent 30%),
+          radial-gradient(circle at 5% 95%, ${PURPLE}08 0%, transparent 28%),
+          url('${bgDataUrl}') center / cover no-repeat,
+          ${baseColor} !important;
+      }
+      *, *::before, *::after {
+        box-shadow: none !important;
+        text-shadow: none !important;
+        filter: none !important;
+        -webkit-filter: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+      .cat-card img {
+        max-height: 150px !important;
+        object-fit: contain !important;
+      }
+    `;
+
+    // base href es crítico: sin esto las URLs relativas (/Fondo2.svg, /logocannanfarma.png, etc.)
+    // no resuelven en la ventana about:blank y las imágenes no cargan
+    const baseHref = `${window.location.origin}/`;
+
+    win.document.open();
     win.document.write(`<!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <base href="${baseHref}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Plus Jakarta Sans', sans-serif; background: white; }
+    html, body { margin: 0; padding: 0; background: #f0f0f0; font-family: 'Poppins', 'Plus Jakarta Sans', sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 20px 0; }
+    #prep-msg {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(255,255,255,0.96);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      font-family: 'Poppins', sans-serif;
+    }
+    #prep-msg p { font-size: 16px; font-weight: 600; color: #1A2535; margin: 0; }
+    #prep-msg small { font-size: 12px; color: #6B7280; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #prep-spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #0D9488; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    ${printOptimizeCss}
     @page { size: A4 ${currentOrient}; margin: 0; }
-    .catalogo-page { width: 100vw; height: 100vh; page-break-after: always; break-after: page; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow: hidden; position: relative; }
-    .catalogo-page:last-child { page-break-after: avoid; break-after: avoid; }
+    @media print {
+      #prep-msg { display: none !important; }
+      html, body { background: white; padding: 0; gap: 0; display: block; }
+      .catalogo-page {
+        width: 100vw !important; height: 100vh !important;
+        margin: 0 !important;
+        page-break-after: always; break-after: page;
+        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+      }
+      .catalogo-page:last-child { page-break-after: avoid; break-after: avoid; }
+    }
   </style>
 </head>
-<body>${content.innerHTML}</body>
+<body>
+  <div id="prep-msg">
+    <div id="prep-spinner"></div>
+    <p>Preparando catálogo…</p>
+    <small id="prep-sub">Cargando imágenes de productos</small>
+  </div>
+  ${content.innerHTML}
+  <script>
+    // background-clip:text no renderiza en PDF — reemplazar con SVG linearGradient.
+    // Maneja dos casos: texto simple (CANAÁN FARMA) y precio con spans de distinto tamaño (S/ + número).
+    (function () {
+      var svgNS = 'http://www.w3.org/2000/svg';
+      var counter = 0;
+
+      function makeSVG(id, w, h) {
+        var svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('xmlns', svgNS);
+        svg.setAttribute('width', w);
+        svg.setAttribute('height', h);
+        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+        svg.style.cssText = 'display:block;overflow:visible;flex-shrink:0';
+        var defs = document.createElementNS(svgNS, 'defs');
+        var grad = document.createElementNS(svgNS, 'linearGradient');
+        grad.setAttribute('id', id);
+        grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '0%');
+        grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '0%');
+        [['0%','#31c1b0'],['45%','#1fa5a5'],['100%','#4a63d9']].forEach(function(s) {
+          var stop = document.createElementNS(svgNS, 'stop');
+          stop.setAttribute('offset', s[0]);
+          stop.setAttribute('stop-color', s[1]);
+          grad.appendChild(stop);
+        });
+        defs.appendChild(grad);
+        svg.appendChild(defs);
+        return svg;
+      }
+
+      document.querySelectorAll('[style*="-webkit-text-fill-color"]').forEach(function (el) {
+        var id = 'cfgrad' + (++counter);
+        var spans = el.querySelectorAll('span');
+        var svg, textEl;
+
+        if (spans.length > 0) {
+          // Precio: <p> con <span> hijos de distinto tamaño (S/ + número)
+          var maxFs = 0;
+          spans.forEach(function(s) {
+            var fs = parseFloat(s.style.fontSize) || 0;
+            if (fs > maxFs) maxFs = fs;
+          });
+          if (maxFs === 0) maxFs = 20;
+          var totalChars = Array.from(spans).reduce(function(acc, s) {
+            return acc + (s.textContent || '').length;
+          }, 0);
+          var w = Math.ceil(maxFs * totalChars * 0.7 + maxFs * 0.5);
+          var h = Math.ceil(maxFs * 1.4);
+          svg = makeSVG(id, w, h);
+          textEl = document.createElementNS(svgNS, 'text');
+          textEl.setAttribute('fill', 'url(#' + id + ')');
+          textEl.setAttribute('font-family', "Poppins, 'Plus Jakarta Sans', sans-serif");
+          textEl.setAttribute('x', '0');
+          textEl.setAttribute('y', Math.ceil(maxFs * 1.1));
+          spans.forEach(function(s) {
+            var tspan = document.createElementNS(svgNS, 'tspan');
+            tspan.setAttribute('font-size', parseFloat(s.style.fontSize) || maxFs);
+            tspan.setAttribute('font-weight', s.style.fontWeight || '800');
+            tspan.textContent = s.textContent;
+            textEl.appendChild(tspan);
+          });
+        } else {
+          // Texto simple: CANAÁN FARMA
+          var fs = parseFloat(el.style.fontSize) || 22;
+          var w = Math.ceil(fs * 11);
+          var h = Math.ceil(fs * 1.3);
+          svg = makeSVG(id, w, h);
+          textEl = document.createElementNS(svgNS, 'text');
+          textEl.setAttribute('fill', 'url(#' + id + ')');
+          textEl.setAttribute('font-size', fs);
+          textEl.setAttribute('font-weight', '800');
+          textEl.setAttribute('font-family', "Poppins, 'Plus Jakarta Sans', sans-serif");
+          textEl.setAttribute('dominant-baseline', 'hanging');
+          textEl.setAttribute('letter-spacing', '0.5');
+          textEl.setAttribute('x', '0');
+          textEl.setAttribute('y', '2');
+          textEl.textContent = el.textContent;
+        }
+
+        svg.appendChild(textEl);
+        el.parentNode.replaceChild(svg, el);
+      });
+    })();
+  </script>
+</body>
 </html>`);
     win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 1800);
+
+    // Espera que todas las imágenes carguen antes de abrir el diálogo de impresión
+    setTimeout(() => {
+      const imgs = Array.from(win.document.querySelectorAll('img'));
+      const pending = imgs.filter(img => !img.complete);
+      const sub = win.document.getElementById('prep-sub');
+
+      const doPrint = () => {
+        const msg = win.document.getElementById('prep-msg');
+        if (msg) msg.style.display = 'none';
+        win.focus();
+        win.print();
+      };
+
+      if (pending.length === 0) {
+        doPrint();
+        return;
+      }
+
+      if (sub) sub.textContent = `Cargando imágenes… 0 / ${pending.length}`;
+
+      let resolved = 0;
+      const onSettled = () => {
+        resolved++;
+        if (sub) sub.textContent = `Cargando imágenes… ${resolved} / ${pending.length}`;
+        if (resolved >= pending.length) doPrint();
+      };
+      pending.forEach(img => {
+        img.addEventListener('load', onSettled);
+        img.addEventListener('error', onSettled);
+      });
+      // Fallback máximo: 5 segundos — el PDF carga antes aunque falten imágenes
+      setTimeout(doPrint, 5000);
+    }, 400);
+  };
+
+  const handleDownloadPDF = async () => {
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('.catalogo-page'));
+    if (pages.length === 0) return;
+
+    setDownloading(true);
+    setDownloadProgress({ current: 0, total: pages.length });
+
+    const isPortrait = currentOrient === 'portrait';
+    const pdf = new jsPDF({
+      orientation: isPortrait ? 'portrait' : 'landscape',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    });
+    const pageW_mm = isPortrait ? 210 : 297;
+    const pageH_mm = isPortrait ? 297 : 210;
+
+    // Apuntar a 150dpi: compensa cualquier zoom del navegador midiendo
+    // el ancho real renderizado del elemento vs el ancho A4 esperado.
+    const TARGET_DPI = 150;
+    const targetPxW = Math.round(pageW_mm * TARGET_DPI / 25.4); // ~1240px para portrait
+
+    for (let i = 0; i < pages.length; i++) {
+      setDownloadProgress({ current: i + 1, total: pages.length });
+
+      const el = pages[i];
+      const renderedW = el.getBoundingClientRect().width || el.offsetWidth;
+      // Escala dinámica: sin importar el zoom del browser, el canvas siempre sale a ~150dpi
+      const captureScale = renderedW > 0 ? targetPxW / renderedW : 2;
+
+      const canvas = await html2canvas(el, {
+        scale: captureScale,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.90);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW_mm, pageH_mm);
+
+      // Liberar canvas inmediatamente para no acumular RAM
+      canvas.width = 0;
+      canvas.height = 0;
+
+      // Ceder el hilo al browser entre páginas para que pueda hacer GC
+      await new Promise<void>(res => setTimeout(res, 30));
+    }
+
+    const tabLabel = TABS.find(t => t.id === tipo)?.label ?? tipo;
+    pdf.save(`catalogo-canaan-farma-${tabLabel.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+
+    setDownloading(false);
+    setDownloadProgress(null);
   };
 
   return (
     <div className="catalogo-print-root" style={{ fontFamily: FONT, minHeight: '100%', background: '#EEF4F6' }}>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
       {/* Controls bar */}
       <div className="no-print" style={{
@@ -761,6 +929,39 @@ export function CatalogoImprimir() {
           >
             <Printer size={16} />
             Generar Catálogo
+          </button>
+
+          {/* Download PDF button */}
+          <button
+            onClick={handleDownloadPDF}
+            disabled={!canPrint || downloading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 22px', borderRadius: '12px', border: 'none',
+              cursor: (canPrint && !downloading) ? 'pointer' : 'not-allowed',
+              background: (canPrint && !downloading) ? '#0D9488' : '#E5E7EB',
+              color: (canPrint && !downloading) ? '#fff' : '#9CA3AF',
+              fontWeight: 700, fontSize: '14px', fontFamily: FONT,
+              whiteSpace: 'nowrap',
+              boxShadow: (canPrint && !downloading) ? '0 4px 16px rgba(13,148,136,0.45)' : 'none',
+              transition: 'all 0.2s',
+              minWidth: '180px',
+              justifyContent: 'center',
+            }}
+          >
+            {downloading ? (
+              <>
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                {downloadProgress
+                  ? `Pág. ${downloadProgress.current} / ${downloadProgress.total}`
+                  : 'Preparando…'}
+              </>
+            ) : (
+              <>
+                <Download size={16} />
+                Descargar PDF
+              </>
+            )}
           </button>
         </div>
       </div>
