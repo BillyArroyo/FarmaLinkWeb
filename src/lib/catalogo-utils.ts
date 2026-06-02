@@ -3,7 +3,7 @@ export const BLUE   = '#0891B2';
 export const PURPLE = '#7C3AED';
 export const NAVY   = '#0F2137';
 export const GRAD   = `linear-gradient(135deg, ${TEAL} 0%, ${BLUE} 50%, ${PURPLE} 100%)`;
-export const FONT   = "'Plus Jakarta Sans', 'Poppins', sans-serif";
+export const FONT   = "'Poppins', 'Plus Jakarta Sans', sans-serif";
 export const STORAGE_BASE = 'https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/object/public/imagenes-productos';
 
 export const LAB_COLORS = [
@@ -23,6 +23,14 @@ export function labColor(lab: string): string {
   let hash = 0;
   for (const c of lab) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
   return LAB_COLORS[Math.abs(hash) % LAB_COLORS.length];
+}
+
+export function labLogoPath(lab: string): string {
+  const clean = lab
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // quita tildes
+    .replace(/\s+/g, '');                               // quita espacios
+  const name = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+  return `/Categorias/${name}Logo.png`;
 }
 
 export function labSlug(lab: string): string {
