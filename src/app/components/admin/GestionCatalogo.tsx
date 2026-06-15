@@ -52,8 +52,19 @@ const STORAGE_BASE_GC = 'https://xbjniegnmwqzrrmwfimz.supabase.co/storage/v1/obj
 
 // Miniatura de imagen por ID — usa imagenes_urls[0] si existe, sino construye URL
 function ImageThumb({ id, hasFoto, imagenes_urls, size = 40 }: { id: string; hasFoto: boolean; imagenes_urls?: string[] | null; size?: number }) {
+  const [triedWebp, setTriedWebp] = useState(false);
   const [err, setErr] = useState(false);
-  const url = imagenes_urls?.[0] ?? `${STORAGE_BASE_GC}/CanaanFarma/${id}.png`;
+  const base = imagenes_urls?.[0] ?? `${STORAGE_BASE_GC}/CanaanFarma/${id}`;
+  // Si la URL base tiene extensión, respetarla; si no, añadir .webp
+  const url = triedWebp
+    ? base.replace(/\.[^./?#]+($|\?)/, '.png$1')
+    : base.endsWith('.webp') || base.endsWith('.png') || base.endsWith('.jpg')
+      ? base
+      : base + '.webp';
+
+  const handleError = () => {
+    if (!triedWebp) { setTriedWebp(true); } else { setErr(true); }
+  };
 
   return (
     <div style={{
@@ -64,7 +75,7 @@ function ImageThumb({ id, hasFoto, imagenes_urls, size = 40 }: { id: string; has
       {hasFoto && !err ? (
         <img
           src={url} alt={id}
-          onError={() => setErr(true)}
+          onError={handleError}
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
       ) : (

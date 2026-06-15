@@ -20,7 +20,15 @@ const EMPRESA = 'CanaanFarma';
 
 export function imgUrl(id: string, imagenes_urls?: string[] | null): string {
   if (imagenes_urls?.[0]) return imagenes_urls[0];
-  return `${STORAGE_BASE}/${EMPRESA}/${id}.png`;
+  // Fallback por convención de nombre: intenta .webp primero (formato actual del storage)
+  return `${STORAGE_BASE}/${EMPRESA}/${id}.webp`;
+}
+
+// Devuelve la URL alternativa cuando la principal falla (png → webp o viceversa)
+export function imgUrlFallback(failedSrc: string, id: string): string | null {
+  if (failedSrc.endsWith('.webp')) return `${STORAGE_BASE}/${EMPRESA}/${id}.png`;
+  if (failedSrc.endsWith('.png'))  return `${STORAGE_BASE}/${EMPRESA}/${id}.webp`;
+  return null;
 }
 
 export function useProductos() {

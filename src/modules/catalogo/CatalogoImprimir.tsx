@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Printer, Loader2, Download } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { useState, useEffect, useRef } from 'react';
+import { Printer, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import {
-  TEAL, BLUE, PURPLE, NAVY, GRAD, FONT, labLogoPath,
+  TEAL, BLUE, PURPLE, NAVY, GRAD, FONT, labLogoBase, LOGO_EXTS,
 } from '../../lib/catalogo-utils';
 import { ProductoCatalogoCard } from '../../components/catalogo/ProductoCatalogoCard';
 
@@ -80,7 +78,10 @@ function WhatsAppIcon({ size = 16 }: { size?: number }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function LabHeroSection({ lab, isH }: { lab: string; isH: boolean }) {
-  const [logoOk, setLogoOk] = useState(true);
+  const [extIdx, setExtIdx] = useState(0);
+  const base   = labLogoBase(lab);
+  const logoSrc = extIdx < LOGO_EXTS.length ? `${base}.${LOGO_EXTS[extIdx]}` : '';
+  const logoOk  = extIdx < LOGO_EXTS.length;
 
   return (
     <div style={{
@@ -96,8 +97,8 @@ function LabHeroSection({ lab, isH }: { lab: string; isH: boolean }) {
     }}>
       {logoOk ? (
         <img
-          src={labLogoPath(lab)} alt={lab}
-          onError={() => setLogoOk(false)}
+          src={logoSrc} alt={lab}
+          onError={() => setExtIdx(i => i + 1)}
           style={{ height: isH ? '90px' : '52px', maxWidth: '90%', objectFit: 'contain', display: 'block' }}
         />
       ) : (
@@ -111,7 +112,10 @@ function LabHeroSection({ lab, isH }: { lab: string; isH: boolean }) {
 
 function PageHeader({ pageNum }: { pageNum: number; isH?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '2px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingBottom: '2px' }}>
+      {/* Spacer izquierdo igual al badge derecho → logo perfectamente centrado */}
+      <div style={{ width: '52px', flexShrink: 0 }} />
+
       {/* Centro — Canaán Farma */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flex: 1 }}>
         <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: '50px', width: '50px', objectFit: 'contain' }} />
@@ -273,8 +277,12 @@ function CatalogoPage({ lab, items, pageNum, total, modo }: { lab: string; items
 
 // Header — matches Image 1
 function UnifiedPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean }) {
+  const badgeSize = isH ? '52px' : '44px';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '4px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingBottom: '4px' }}>
+      {/* Spacer izquierdo igual al badge → logo perfectamente centrado */}
+      <div style={{ width: badgeSize, flexShrink: 0 }} />
+
       {/* Centro — Canaán Farma */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', flex: 1 }}>
         <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: isH ? '120px' : '52px', width: isH ? '120px' : '52px', objectFit: 'contain' }} />
@@ -286,7 +294,7 @@ function UnifiedPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean }) 
 
       {/* Badge número — gradiente */}
       <div style={{
-        width: isH ? '52px' : '44px', height: isH ? '52px' : '44px',
+        width: badgeSize, height: badgeSize,
         background: CF_PRICE_G,
         borderRadius: '14px',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -399,8 +407,12 @@ function UnifiedPage({ items, pageNum, total, startIdx, modo }: { items: Product
 // ═══════════════════════════════════════════════════════════════════════════
 
 function HospitalPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean }) {
+  const badgeSize = isH ? '52px' : '44px';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, paddingBottom: '2px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingBottom: '2px' }}>
+      {/* Spacer izquierdo igual al badge → logo perfectamente centrado */}
+      <div style={{ width: badgeSize, flexShrink: 0 }} />
+
       {/* Centro — Canaán Farma */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', flex: 1 }}>
         <img src="/logocannanfarma.png" alt="Canaán Farma" style={{ height: isH ? '120px' : '52px', width: isH ? '120px' : '52px', objectFit: 'contain' }} />
@@ -412,7 +424,7 @@ function HospitalPageHeader({ pageNum, isH }: { pageNum: number; isH: boolean })
 
       {/* Badge número — gradiente */}
       <div style={{
-        width: isH ? '52px' : '44px', height: isH ? '52px' : '44px',
+        width: badgeSize, height: badgeSize,
         background: CF_PRICE_G,
         borderRadius: '14px',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -494,6 +506,42 @@ function HospitalPage({ items, pageNum, total, startIdx, modo }: { items: Produc
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Lazy page — solo renderiza cuando está cerca del viewport
+// ═══════════════════════════════════════════════════════════════════════════
+
+function LazyPage({ height, children }: { height: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [rendered, setRendered] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setRendered(true); obs.disconnect(); } },
+      { rootMargin: '800px' }, // pre-render 800px antes de entrar al viewport
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} style={{ minHeight: height, width: '100%', display: 'flex', justifyContent: 'center' }}>
+      {rendered ? children : (
+        <div style={{
+          width: height === '297mm' ? '210mm' : '297mm',
+          minHeight: height,
+          background: 'rgba(255,255,255,0.6)',
+          borderRadius: '12px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Loader2 size={22} color={TEAL} style={{ animation: 'spin 1s linear infinite', opacity: 0.4 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Main export
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -508,8 +556,8 @@ export function CatalogoImprimir() {
   const [modo, setModo] = useState<Modo>('vertical');
   const [productos, setProductos] = useState<ProductoImprimir[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [renderingForPrint, setRenderingForPrint] = useState(false);
 
   useEffect(() => {
     supabase
@@ -578,8 +626,13 @@ export function CatalogoImprimir() {
     });
 
   const handlePrint = async () => {
+    // 1. Renderizar TODAS las páginas antes de copiar al popup
+    setPrinting(true);
+    setRenderingForPrint(true);
+    await new Promise<void>(res => setTimeout(res, 600)); // esperar re-render completo
+
     const content = document.getElementById('catalogo-content');
-    if (!content) return;
+    if (!content) { setPrinting(false); setRenderingForPrint(false); return; }
 
     const win = window.open('', '_blank');
     if (!win) {
@@ -772,6 +825,8 @@ export function CatalogoImprimir() {
         if (msg) msg.style.display = 'none';
         win.focus();
         win.print();
+        // Restaurar preview lazy después de que se abre el diálogo
+        setTimeout(() => { setPrinting(false); setRenderingForPrint(false); }, 1000);
       };
 
       if (pending.length === 0) {
@@ -796,62 +851,6 @@ export function CatalogoImprimir() {
     }, 400);
   };
 
-  const handleDownloadPDF = async () => {
-    const pages = Array.from(document.querySelectorAll<HTMLElement>('.catalogo-page'));
-    if (pages.length === 0) return;
-
-    setDownloading(true);
-    setDownloadProgress({ current: 0, total: pages.length });
-
-    const isPortrait = currentOrient === 'portrait';
-    const pdf = new jsPDF({
-      orientation: isPortrait ? 'portrait' : 'landscape',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-    });
-    const pageW_mm = isPortrait ? 210 : 297;
-    const pageH_mm = isPortrait ? 297 : 210;
-
-    // Apuntar a 150dpi: compensa cualquier zoom del navegador midiendo
-    // el ancho real renderizado del elemento vs el ancho A4 esperado.
-    const TARGET_DPI = 150;
-    const targetPxW = Math.round(pageW_mm * TARGET_DPI / 25.4); // ~1240px para portrait
-
-    for (let i = 0; i < pages.length; i++) {
-      setDownloadProgress({ current: i + 1, total: pages.length });
-
-      const el = pages[i];
-      const renderedW = el.getBoundingClientRect().width || el.offsetWidth;
-      // Escala dinámica: sin importar el zoom del browser, el canvas siempre sale a ~150dpi
-      const captureScale = renderedW > 0 ? targetPxW / renderedW : 2;
-
-      const canvas = await html2canvas(el, {
-        scale: captureScale,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.90);
-      if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, 0, pageW_mm, pageH_mm);
-
-      // Liberar canvas inmediatamente para no acumular RAM
-      canvas.width = 0;
-      canvas.height = 0;
-
-      // Ceder el hilo al browser entre páginas para que pueda hacer GC
-      await new Promise<void>(res => setTimeout(res, 30));
-    }
-
-    const tabLabel = TABS.find(t => t.id === tipo)?.label ?? tipo;
-    pdf.save(`catalogo-canaan-farma-${tabLabel.toLowerCase().replace(/\s+/g, '-')}.pdf`);
-
-    setDownloading(false);
-    setDownloadProgress(null);
-  };
 
   return (
     <div className="catalogo-print-root" style={{ fontFamily: FONT, minHeight: '100%', background: '#EEF4F6' }}>
@@ -914,60 +913,37 @@ export function CatalogoImprimir() {
           {/* Print button */}
           <button
             onClick={handlePrint}
-            disabled={!canPrint}
+            disabled={!canPrint || printing}
             style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '10px 22px', borderRadius: '12px', border: 'none',
-              cursor: canPrint ? 'pointer' : 'not-allowed',
-              background: canPrint ? GRAD : '#E5E7EB',
-              color: canPrint ? '#fff' : '#9CA3AF',
+              cursor: (canPrint && !printing) ? 'pointer' : 'not-allowed',
+              background: (canPrint && !printing) ? GRAD : '#E5E7EB',
+              color: (canPrint && !printing) ? '#fff' : '#9CA3AF',
               fontWeight: 700, fontSize: '14px', fontFamily: FONT,
-              whiteSpace: 'nowrap',
-              boxShadow: canPrint ? `0 4px 16px ${TEAL}45` : 'none',
+              whiteSpace: 'nowrap', minWidth: '180px', justifyContent: 'center',
+              boxShadow: (canPrint && !printing) ? `0 4px 16px ${TEAL}45` : 'none',
               transition: 'all 0.2s',
             }}
           >
-            <Printer size={16} />
-            Generar Catálogo
-          </button>
-
-          {/* Download PDF button */}
-          <button
-            onClick={handleDownloadPDF}
-            disabled={!canPrint || downloading}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '10px 22px', borderRadius: '12px', border: 'none',
-              cursor: (canPrint && !downloading) ? 'pointer' : 'not-allowed',
-              background: (canPrint && !downloading) ? '#0D9488' : '#E5E7EB',
-              color: (canPrint && !downloading) ? '#fff' : '#9CA3AF',
-              fontWeight: 700, fontSize: '14px', fontFamily: FONT,
-              whiteSpace: 'nowrap',
-              boxShadow: (canPrint && !downloading) ? '0 4px 16px rgba(13,148,136,0.45)' : 'none',
-              transition: 'all 0.2s',
-              minWidth: '180px',
-              justifyContent: 'center',
-            }}
-          >
-            {downloading ? (
+            {printing ? (
               <>
                 <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                {downloadProgress
-                  ? `Pág. ${downloadProgress.current} / ${downloadProgress.total}`
-                  : 'Preparando…'}
+                Preparando páginas…
               </>
             ) : (
               <>
-                <Download size={16} />
-                Descargar PDF
+                <Printer size={16} />
+                Generar Catálogo
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Pages */}
-      <div id="catalogo-content" className="print-wrapper" style={{ padding: '32px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '32px' }}>
+      {/* Pages — overflowX:auto para que las páginas nunca se compriman */}
+      <div style={{ overflowX: 'auto', width: '100%' }}>
+      <div id="catalogo-content" className="print-wrapper" style={{ padding: '32px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '32px', minWidth: 'max-content' }}>
         {loading && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '400px', justifyContent: 'center', gap: '16px' }}>
             <Loader2 size={38} color={TEAL} style={{ animation: 'spin 1s linear infinite' }} />
@@ -987,18 +963,25 @@ export function CatalogoImprimir() {
           </div>
         )}
 
-        {tipo === 'por-lab' && !loading && labPages.pages.map(page => (
-          <CatalogoPage key={page.pageNum} lab={page.lab} items={page.items} pageNum={page.pageNum} total={labPages.total} modo={modo} />
-        ))}
+        {tipo === 'por-lab' && !loading && labPages.pages.map(page => {
+          const pageH = modo === 'vertical' ? '297mm' : '210mm';
+          const inner = <CatalogoPage key={page.pageNum} lab={page.lab} items={page.items} pageNum={page.pageNum} total={labPages.total} modo={modo} />;
+          return renderingForPrint ? inner : <LazyPage key={page.pageNum} height={pageH}>{inner}</LazyPage>;
+        })}
 
-        {tipo === 'unificado' && !loading && uniPages.pages.map(page => (
-          <UnifiedPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />
-        ))}
+        {tipo === 'unificado' && !loading && uniPages.pages.map(page => {
+          const pageH = modo === 'vertical' ? '297mm' : '210mm';
+          const inner = <UnifiedPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />;
+          return renderingForPrint ? inner : <LazyPage key={page.pageNum} height={pageH}>{inner}</LazyPage>;
+        })}
 
-        {tipo === 'hospital' && !loading && uniPages.pages.map(page => (
-          <HospitalPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />
-        ))}
+        {tipo === 'hospital' && !loading && uniPages.pages.map(page => {
+          const pageH = modo === 'vertical' ? '297mm' : '210mm';
+          const inner = <HospitalPage key={page.pageNum} items={page.items} pageNum={page.pageNum} total={uniPages.total} startIdx={page.startIdx} modo={modo} />;
+          return renderingForPrint ? inner : <LazyPage key={page.pageNum} height={pageH}>{inner}</LazyPage>;
+        })}
       </div>
+      </div>{/* overflowX scroll wrapper */}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
