@@ -25,12 +25,19 @@ export function labColor(lab: string): string {
   return LAB_COLORS[Math.abs(hash) % LAB_COLORS.length];
 }
 
-export function labLogoPath(lab: string): string {
+export const LOGO_EXTS = ['png', 'webp', 'jpg', 'jpeg', 'svg'] as const;
+
+export function labLogoBase(lab: string): string {
   const clean = lab
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // quita tildes
-    .replace(/\s+/g, '');                               // quita espacios
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '');
   const name = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
-  return `/Categorias/${name}Logo.png`;
+  return `/Categorias/${name}Logo`;
+}
+
+// Mantener por compatibilidad con código que no usa cascada
+export function labLogoPath(lab: string): string {
+  return labLogoBase(lab) + '.png';
 }
 
 export function labSlug(lab: string): string {
